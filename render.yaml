@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: vocabdost
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: GEMINI_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "10000"
+    healthCheckPath: /api/dictionary
+    autoDeploy: true

@@ -1,0 +1,16 @@
+{
+  "name": "VocabDost — The friend who never lets you forget",
+  "short_name": "VocabDost",
+  "description": "Master 1,500+ exam words with AI-powered spaced repetition. SSC, UPSC, Banking ready.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#4F46E5",
+  "theme_color": "#4F46E5",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["education", "productivity"],
+  "lang": "en-IN"
+}
