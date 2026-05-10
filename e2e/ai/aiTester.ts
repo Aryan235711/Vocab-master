@@ -12,7 +12,7 @@ if (!apiKey) {
 }
 
 const ai = new GoogleGenAI({ apiKey: apiKey || 'mock-key' });
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-1.5-flash';
 
 export interface Action {
   type: 'click' | 'type' | 'wait' | 'done';
