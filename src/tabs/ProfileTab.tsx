@@ -8,12 +8,12 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { usePremium } from '../context/PremiumContext';
 import { useNavigate } from 'react-router-dom';
-import { Code, Heart, Crown, Cloud, Star } from 'lucide-react';
+import { Code, Heart, Crown, Cloud, Star, Download, Upload } from 'lucide-react';
 import AiUsageIndicator from '../components/AiUsageIndicator';
 import UpgradeModal from '../components/UpgradeModal';
 
 export default function ProfileTab() {
-  const { settings, updateSettings, resetProgress } = useApp();
+  const { settings, updateSettings, resetProgress, exportData, importData } = useApp();
   const { tier, isFoundingMember, softLaunch } = usePremium();
   const navigate = useNavigate();
   const [showSyncUpgrade, setShowSyncUpgrade] = useState(false);
@@ -23,6 +23,39 @@ export default function ProfileTab() {
       resetProgress();
       navigate('/home');
     }
+  };
+
+  const handleExport = () => {
+    const data = exportData();
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vocabdost_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        const success = importData(content);
+        if (success) {
+          alert('Backup restored successfully!');
+        } else {
+          alert('Failed to restore backup. The file might be corrupted or invalid.');
+        }
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (
@@ -133,6 +166,34 @@ export default function ProfileTab() {
           </button>
         </div>
 
+      </div>
+
+      {/* ── Data Portability Card ─────────────────────────────────────────── */}
+      <div className="bg-indigo-50 border border-indigo-100 rounded-[32px] p-6 lg:p-8 shadow-sm">
+        <h3 className="text-lg font-black text-indigo-900 mb-2">Data Portability</h3>
+        <p className="text-sm text-indigo-700 mb-6">
+          Your progress is stored locally in your browser. Download a backup file to save your streaks, or upload one to restore your data on another device.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <button
+            onClick={handleExport}
+            className="flex-1 bg-white text-[#4F46E5] border border-indigo-200 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shadow-sm"
+          >
+            <Download className="w-5 h-5" />
+            Export Backup
+          </button>
+          
+          <label className="flex-1 bg-white text-[#4F46E5] border border-indigo-200 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shadow-sm cursor-pointer">
+            <Upload className="w-5 h-5" />
+            Import Backup
+            <input 
+              type="file" 
+              accept=".json" 
+              className="hidden" 
+              onChange={handleImport} 
+            />
+          </label>
+        </div>
       </div>
 
       <button

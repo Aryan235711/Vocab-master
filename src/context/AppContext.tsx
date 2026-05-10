@@ -59,6 +59,8 @@ interface AppContextType {
   getNewCards: (limit: number) => WordData[];
   gainXp: (amount: number) => void;
   resetProgress: () => void;
+  exportData: () => string;
+  importData: (jsonData: string) => boolean;
 }
 
 const defaultStats: UserStats = {
@@ -316,6 +318,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSettings(defaultSettings);
   };
 
+  /** Exports all user progress as a serialized JSON string. */
+  const exportData = () => {
+    const data = {
+      userWords,
+      stats,
+      settings,
+      version: '1.0' // For future schema migrations
+    };
+    return JSON.stringify(data);
+  };
+
+  /** Safely parses and imports user progress from a serialized JSON string. */
+  const importData = (jsonData: string): boolean => {
+    try {
+      const parsed = JSON.parse(jsonData);
+      
+      // Basic validation to ensure it's a valid backup file
+      if (parsed.userWords && parsed.stats && parsed.settings) {
+        setUserWords(parsed.userWords);
+        setStats({ ...defaultStats, ...parsed.stats });
+        setSettings({ ...defaultSettings, ...parsed.settings });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Failed to import backup data', e);
+      return false;
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -329,7 +361,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getDueCards,
         getNewCards,
         gainXp,
-        resetProgress
+        resetProgress,
+        exportData,
+        importData
       }}
     >
       {children}
