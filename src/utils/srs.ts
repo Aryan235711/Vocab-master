@@ -77,9 +77,16 @@ export function calculateNextReviewState(
     } else {
       interval = Math.round(interval * easeFactor * overallMultiplier);
     }
+    
+    // Safety Net 1: Floor
+    // Enforce a minimum interval progression to prevent shrinkage from heavy LocII penalties
+    interval = Math.max(current.interval + 1, Math.round(interval));
+
+    // Safety Net 2: Ceiling
+    // Cap the maximum interval at 365 days to ensure mastered words are checked annually
+    interval = Math.min(interval, 365);
+    
     repetitions += 1;
-    // Enforce a minimum interval of 1 day for correct answers
-    interval = Math.max(1, Math.round(interval));
   }
 
   // Adjust Ease Factor based on quality rating
