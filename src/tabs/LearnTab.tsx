@@ -238,8 +238,16 @@ export default function LearnTab() {
               animate={{ rotateX: 0, opacity: 1 }}
               exit={{ rotateX: 90, opacity: 0 }}
               transition={{ duration: 0.3 }}
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              onDragEnd={(e, info) => {
+                if (Math.abs(info.offset.x) > 50) {
+                  handleFlip();
+                }
+              }}
               onClick={handleFlip}
-              className="bg-white rounded-[32px] border border-slate-200 shadow-sm flex-1 flex flex-col items-center justify-center p-8 cursor-pointer hover:border-indigo-200 hover:shadow-md transition-colors relative"
+              className="bg-white rounded-[32px] border border-slate-200 shadow-sm flex-1 flex flex-col items-center justify-center p-8 cursor-pointer hover:border-indigo-200 hover:shadow-md transition-colors relative touch-pan-y"
             >
               <div className="absolute top-6 flex w-full px-8 justify-between">
                 {(() => {
@@ -281,7 +289,17 @@ export default function LearnTab() {
               animate={{ rotateX: 0, opacity: 1 }}
               exit={{ rotateX: 90, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="bg-white rounded-[32px] border border-slate-200 shadow-sm flex-1 flex flex-col p-6 lg:p-8 overflow-y-auto"
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              onDragEnd={(e, info) => {
+                if (info.offset.x > 80) {
+                  handleRate(4); // Swipe Right -> Good
+                } else if (info.offset.x < -80) {
+                  handleRate(0); // Swipe Left -> Again
+                }
+              }}
+              className="bg-white rounded-[32px] border border-slate-200 shadow-sm flex-1 flex flex-col p-6 lg:p-8 overflow-y-auto touch-pan-y"
             >
               <div className="mb-4">
                 {(() => {
