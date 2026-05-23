@@ -9,19 +9,29 @@ test.describe('Tier 2: AI Autonomous Flow - Features', () => {
       
     await page.goto('/');
     
-    // Bypass onboarding manually to save AI quota and avoid hallucination loops
-    await page.getByRole('button', { name: 'Get Started' }).click();
-    await page.waitForTimeout(500);
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await page.waitForTimeout(500);
-    await page.getByRole('button', { name: 'Start Learning' }).click();
+    // Bypass onboarding robustly
+    try {
+      const getStartedBtn = page.getByRole('button', { name: /Get Started/i });
+      await getStartedBtn.waitFor({ state: 'visible', timeout: 3000 });
+      await getStartedBtn.click();
+      await page.getByRole('button', { name: /Continue/i }).click();
+      await page.getByRole('button', { name: /Start Learning/i }).click();
+      // Wait for the Home tab to appear
+      await page.getByText('Daily Quests').waitFor({ state: 'visible', timeout: 5000 });
+    } catch (e) {
+      // Onboarding not visible or already completed
+    }
+
+    // Navigate to Learn tab manually to avoid the AI clicking "Learn new words" on the home tab
+    await page.goto('/learn');
     await page.waitForTimeout(1000);
     
     const ai = new AITester(page);
 
-    const goal = "Navigate to the 'Learn' tab. Click the button that says 'Got a doubt?' or 'MessageCircle'. Wait for the chat to open. Type the question 'What does this word mean in simple terms?' into the chat input, and click the send button. Then you are done.";
-    
-    const success = await ai.executeGoal(goal, 12);
+    const success = await ai.executeGoal(
+      "Click the button that says 'Got a doubt?'. Once the chat opens, type 'What is the etymology of this word?' in the input field, submit it, and wait for the AI's response.",
+      12
+    );
     
     expect(success).toBe(true);
   });
