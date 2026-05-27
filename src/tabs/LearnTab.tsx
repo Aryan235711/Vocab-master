@@ -12,7 +12,8 @@ import { usePremium } from '../context/PremiumContext';
 import AiUsageIndicator from '../components/AiUsageIndicator';
 import UpgradeModal from '../components/UpgradeModal';
 import { playCorrect, playIncorrect, playFlip } from '../utils/sound';
-import { Volume2, ChevronRight, MessageCircle, AlertCircle, RefreshCw, X, Frown, Meh, Smile, SmilePlus, BookOpen, PartyPopper, Umbrella, Sparkles } from 'lucide-react';
+import { detectSessionFatigue } from '../utils/analytics';
+import { Volume2, ChevronRight, MessageCircle, AlertCircle, RefreshCw, X, Frown, Meh, Smile, SmilePlus, BookOpen, PartyPopper, Umbrella, Sparkles, Coffee } from 'lucide-react';
 import canvasConfetti from 'canvas-confetti';
 
 /**
@@ -45,6 +46,13 @@ export default function LearnTab() {
 
   // AI upgrade gating
   const [showAiUpgrade, setShowAiUpgrade] = useState(false);
+
+  // LocII Tier 1.2 — session fatigue: track per-session quality scores
+  // and surface a non-blocking "take a break" prompt when late-window
+  // accuracy drops noticeably below early-window. Resets per session.
+  const [qualityHistory, setQualityHistory] = useState<number[]>([]);
+  const [fatigueDismissed, setFatigueDismissed] = useState(false);
+  const fatigueSignal = detectSessionFatigue(qualityHistory);
 
   /** Build initial learning sequence fetching explicitly due cards bounded by hard constraint thresholds. */
   useEffect(() => {
@@ -96,6 +104,7 @@ export default function LearnTab() {
     }
 
     recordReview(currentCard.id, quality);
+    setQualityHistory(h => [...h, quality]);
     if (settings.soundEffects) {
       quality >= 3 ? playCorrect() : playIncorrect();
     }
@@ -186,6 +195,8 @@ export default function LearnTab() {
             setCurrentIndex(0);
             setIsFlipped(false);
             setSessionCompleted(false);
+            setQualityHistory([]);
+            setFatigueDismissed(false);
           }}
           className="bg-[#4F46E5] text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-indigo-200 hover:scale-[1.02] active:scale-95 transition-transform"
         >
@@ -209,7 +220,50 @@ export default function LearnTab() {
 
   return (
     <div className="p-4 lg:p-8 flex flex-col max-w-5xl w-full mx-auto min-h-[calc(100vh-160px)]">
-      
+
+      {/* LocII session-fatigue banner — non-blocking, dismissible per session */}
+      {fatigueSignal.fatigued && !fatigueDismissed && (
+        <div
+          data-testid="fatigue-banner"
+          className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 shrink-0"
+        >
+          <div className="bg-amber-100 text-amber-700 p-2 rounded-xl shrink-0">
+            <Coffee className="w-5 h-5" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-amber-900">
+              Accuracy dipped {Math.round(fatigueSignal.dropPercent)} points this session
+            </p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              You started at {Math.round(fatigueSignal.earlyAccuracy * 100)}% and you're at{' '}
+              {Math.round(fatigueSignal.recentAccuracy * 100)}% now. Take a break and come back
+              fresh — LocII will reschedule weaker cards for you.
+            </p>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setSessionCompleted(true)}
+                className="bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors"
+              >
+                End session
+              </button>
+              <button
+                onClick={() => setFatigueDismissed(true)}
+                className="text-amber-900 text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-amber-100 transition-colors"
+              >
+                Keep going
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => setFatigueDismissed(true)}
+            className="text-amber-700 hover:text-amber-900 p-1 -mr-1 -mt-1 shrink-0"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Bar inside Learn */}
       <div className="flex items-center justify-between mb-6 shrink-0">
         <div className="text-sm font-bold text-slate-500">

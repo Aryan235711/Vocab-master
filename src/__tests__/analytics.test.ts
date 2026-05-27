@@ -7,6 +7,7 @@ import {
   computeBestScore,
   updateDailyActivity,
   toDateKey,
+  detectSessionFatigue,
 } from '../utils/analytics';
 import { startOfDay, subDays } from 'date-fns';
 
@@ -195,5 +196,77 @@ describe('toDateKey', () => {
   it('zero-pads single-digit months and days', () => {
     const d = new Date(2026, 0, 3, 9, 0, 0); // Jan 3, 2026
     expect(toDateKey(d)).toBe('2026-01-03');
+  });
+});
+
+// ─── detectSessionFatigue (LocII Tier 1.2) ──────────────────────
+
+describe('detectSessionFatigue', () => {
+  it('stays quiet until there are at least 2× windowSize answers', () => {
+    // 9 answers, all correct, windowSize=5 → not enough for two windows
+    const r = detectSessionFatigue([5, 5, 5, 5, 5, 5, 5, 5, 5]);
+    expect(r.fatigued).toBe(false);
+    expect(r.dropPercent).toBe(0);
+  });
+
+  it('does NOT fatigue when accuracy stays high throughout', () => {
+    const r = detectSessionFatigue([5, 4, 5, 4, 5, 4, 5, 4, 5, 4]);
+    expect(r.fatigued).toBe(false);
+    expect(r.earlyAccuracy).toBe(1);
+    expect(r.recentAccuracy).toBe(1);
+  });
+
+  it('does NOT fatigue when accuracy is consistently mediocre', () => {
+    // 60% throughout — no drop, no signal.
+    const r = detectSessionFatigue([5, 5, 5, 0, 0, 5, 5, 5, 0, 0]);
+    expect(r.earlyAccuracy).toBeCloseTo(0.6);
+    expect(r.recentAccuracy).toBeCloseTo(0.6);
+    expect(r.fatigued).toBe(false);
+  });
+
+  it('fatigues when late-window accuracy drops below threshold', () => {
+    // Early: 5/5 correct = 100%. Recent: 1/5 correct = 20%. Drop = 80pts.
+    const r = detectSessionFatigue([5, 5, 5, 5, 5, 0, 0, 0, 0, 5]);
+    expect(r.fatigued).toBe(true);
+    expect(r.earlyAccuracy).toBe(1);
+    expect(r.recentAccuracy).toBeCloseTo(0.2);
+    expect(r.dropPercent).toBeCloseTo(80);
+  });
+
+  it('does NOT fatigue when the drop is below the threshold', () => {
+    // Early: 100%. Recent: 90% (4/5). Drop = 10pts < 15pts default.
+    const r = detectSessionFatigue(
+      [5, 5, 5, 5, 5, 5, 5, 5, 5, 0],
+      5,
+      0.15
+    );
+    expect(r.dropPercent).toBeCloseTo(20);
+    // (with 5,5,5,5,5 vs 5,5,5,5,0 → 100% vs 80% = 20pt drop, still > 15pt threshold)
+    expect(r.fatigued).toBe(true);
+  });
+
+  it('respects a stricter threshold parameter', () => {
+    // Same data as above but with threshold raised to 25pts — should NOT fatigue.
+    const r = detectSessionFatigue(
+      [5, 5, 5, 5, 5, 5, 5, 5, 5, 0],
+      5,
+      0.25
+    );
+    expect(r.fatigued).toBe(false);
+  });
+
+  it('recovers (no signal) when recent answers bounce back', () => {
+    // Initial dip, then full recovery in the recent window.
+    const r = detectSessionFatigue([5, 5, 5, 5, 5, 0, 0, 5, 5, 5, 5, 5]);
+    expect(r.recentAccuracy).toBe(1);
+    expect(r.fatigued).toBe(false);
+  });
+
+  it('handles single-window quality signals correctly with a custom window size', () => {
+    // windowSize=3, need 6 answers minimum.
+    const r = detectSessionFatigue([5, 5, 5, 0, 0, 0], 3, 0.15);
+    expect(r.earlyAccuracy).toBe(1);
+    expect(r.recentAccuracy).toBe(0);
+    expect(r.fatigued).toBe(true);
   });
 });

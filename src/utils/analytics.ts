@@ -143,3 +143,51 @@ export function toDateKey(d: Date): string {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
+
+// ─── Session Fatigue Detection (LocII Tier 1.2) ──────────────────
+
+export interface SessionFatigueSignal {
+  /** True when the late-window accuracy has dropped enough below the
+   *  early-window accuracy to suggest the user is tiring. */
+  fatigued: boolean;
+  /** Accuracy across the first `windowSize` answers (0–1). */
+  earlyAccuracy: number;
+  /** Accuracy across the most recent `windowSize` answers (0–1). */
+  recentAccuracy: number;
+  /** Drop, in absolute percentage points (positive = decline). */
+  dropPercent: number;
+}
+
+/**
+ * Compares accuracy in the opening window of a session to the most
+ * recent window. Flags fatigue when the late-window accuracy is at
+ * least `thresholdDrop` (as a fraction, e.g. 0.15 = 15 pts) below the
+ * early window. Pure: no React, no side effects.
+ *
+ * @param qualityHistory ordered quality scores (0–5) from the current session
+ * @param windowSize how many answers form each window (default 5)
+ * @param thresholdDrop required drop as a fraction, e.g. 0.15 = 15 pts
+ */
+export function detectSessionFatigue(
+  qualityHistory: number[],
+  windowSize: number = 5,
+  thresholdDrop: number = 0.15
+): SessionFatigueSignal {
+  // Need two non-overlapping windows of data before signalling —
+  // otherwise a single bad answer near the start would trip it.
+  if (qualityHistory.length < windowSize * 2) {
+    return { fatigued: false, earlyAccuracy: 0, recentAccuracy: 0, dropPercent: 0 };
+  }
+  const early = qualityHistory.slice(0, windowSize);
+  const recent = qualityHistory.slice(-windowSize);
+  const correctRate = (arr: number[]) => arr.filter(q => q >= 3).length / arr.length;
+  const earlyAccuracy = correctRate(early);
+  const recentAccuracy = correctRate(recent);
+  const drop = earlyAccuracy - recentAccuracy;
+  return {
+    fatigued: drop >= thresholdDrop,
+    earlyAccuracy,
+    recentAccuracy,
+    dropPercent: drop * 100,
+  };
+}
