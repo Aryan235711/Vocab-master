@@ -36,7 +36,25 @@ const MODEL = 'gemini-2.5-flash-lite';
 // from directly hitting /api/* to drain the Gemini quota.
 
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MAX_ACTIVE_SESSIONS = 50_000; // hard cap to bound memory under abuse
 const activeSessions = new Map<string, number>(); // token → expiresAt
+
+// Per-IP cap on /api/session calls so a single client cannot bloat the Map.
+const SESSION_CREATE_LIMIT = 10;
+const SESSION_CREATE_WINDOW_MS = 60_000;
+const sessionCreateMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkSessionCreateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = sessionCreateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    sessionCreateMap.set(ip, { count: 1, resetAt: now + SESSION_CREATE_WINDOW_MS });
+    return true;
+  }
+  if (entry.count >= SESSION_CREATE_LIMIT) return false;
+  entry.count++;
+  return true;
+}
 
 // Clean expired sessions every 10 minutes
 setInterval(() => {
@@ -44,9 +62,21 @@ setInterval(() => {
   for (const [token, expiresAt] of activeSessions) {
     if (now > expiresAt) activeSessions.delete(token);
   }
+  for (const [ip, entry] of sessionCreateMap) {
+    if (now > entry.resetAt) sessionCreateMap.delete(ip);
+  }
 }, 10 * 60 * 1000);
 
-app.post('/api/session', (_req, res) => {
+app.post('/api/session', (req, res) => {
+  const clientIp = req.ip || 'unknown';
+  if (!checkSessionCreateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Too many session requests. Try again in a minute.' });
+  }
+  if (activeSessions.size >= MAX_ACTIVE_SESSIONS) {
+    // Defensive: refuse rather than let the Map grow unbounded.
+    // The 10-min sweeper should keep us well below this in practice.
+    return res.status(503).json({ error: 'Server busy. Try again shortly.' });
+  }
   const token = crypto.randomBytes(32).toString('hex');
   activeSessions.set(token, Date.now() + SESSION_TTL_MS);
   res.json({ token, expiresIn: SESSION_TTL_MS });

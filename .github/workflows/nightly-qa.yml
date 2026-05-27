@@ -39,11 +39,13 @@ jobs:
         run: npm run test:e2e
         
       - name: Tier 2 - Autonomous AI Tests
-        # We explicitly enforce 1 worker to prevent hitting the 15 RPM Gemini free-tier rate limit
+        # Skip if any prior step failed — no point burning Gemini quota on a known-broken build.
+        # We explicitly enforce 1 worker to prevent hitting the 15 RPM Gemini free-tier rate limit.
+        if: success()
         run: npx playwright test e2e/ai --workers=1
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          
+
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
         if: always()
@@ -53,8 +55,11 @@ jobs:
           retention-days: 14
 
       - name: Send Alert on Failure
-        if: failure()
+        # Only attempt webhook delivery when the secret actually exists, otherwise the
+        # action throws a "missing input" error that masks the real failure.
+        if: failure() && env.SLACK_WEBHOOK != ''
         uses: rtCamp/action-slack-notify@v2
+        continue-on-error: true
         env:
           SLACK_WEBHOOK: ${{ secrets.WEBHOOK_URL }} # Can be Slack or Discord compatible webhook
           SLACK_TITLE: "Nightly QA Failed 🚨"

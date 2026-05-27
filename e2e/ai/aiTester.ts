@@ -34,9 +34,7 @@ export class AITester {
       return false; // Or throw depending on your preference
     }
 
-    let step = 0;
-    while (step < maxSteps) {
-      step++;
+    for (let step = 1; step <= maxSteps; step++) {
       console.log(`\n--- Step ${step} ---`);
       
       // 1. Capture Screenshot
@@ -117,15 +115,13 @@ export class AITester {
         await this.page.waitForTimeout(1000); 
 
       } catch (err: any) {
-        console.error(`AI Error executing action (Step ${step + 1}):`, err.message);
+        console.error(`AI Error executing action (Step ${step}):`, err.message);
       }
 
       // Add a small delay to avoid hitting Gemini free-tier rate limits (15 RPM)
       await this.page.waitForTimeout(4500);
-
-      step++;
     }
-    
+
     console.log(`Failed to achieve goal within ${maxSteps} steps.`);
     return false;
   }
