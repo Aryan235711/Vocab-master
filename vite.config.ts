@@ -69,6 +69,37 @@ export default defineConfig(() => {
     test: {
       include: ['src/**/*.test.{ts,tsx}'],
       exclude: ['e2e/**', 'node_modules/**', 'dist/**', 'playwright-report/**'],
+      coverage: {
+        provider: 'v8',
+        // Only measure code we actually own — UI tabs/components are
+        // exercised by Playwright, not vitest, so excluding them keeps
+        // the threshold meaningful instead of permanently red.
+        include: [
+          'src/utils/**/*.ts',
+          'src/context/**/*.tsx',
+          'server.ts',
+        ],
+        exclude: [
+          'src/**/*.test.{ts,tsx}',
+          'src/**/*.d.ts',
+          // sound.ts: browser-only Web Audio shim, no unit-testable logic.
+          'src/utils/sound.ts',
+          // PremiumContext.tsx: gated on Razorpay integration that isn't
+          // wired yet — `tier` is hardcoded 'free'. Most branches are
+          // unreachable until that lands. Re-include when Razorpay ships.
+          'src/context/PremiumContext.tsx',
+        ],
+        reporter: ['text', 'html', 'json-summary'],
+        thresholds: {
+          // Floor pinned to current measured coverage of the included
+          // surface. Bump up as PRs add tests; never relax without
+          // explicit reason in the commit message.
+          lines: 85,
+          functions: 85,
+          statements: 85,
+          branches: 75,
+        },
+      },
     },
   };
 });

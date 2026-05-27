@@ -6,9 +6,10 @@ test.describe('Tier 2: AI Autonomous Flow', () => {
   test.setTimeout(120000); 
 
   test('AI agent navigates to Learn tab and completes one review', async ({ page }) => {
-    // Skipping to preserve the 20 Requests Per Day free-tier quota
-    test.skip(true, 'Skipped to preserve Gemini free-tier quota');
-    // Note: This test will fail if GEMINI_API_KEY is not set in the .env file.
+    // Run only when explicitly opted in (RUN_AI_TESTS=1). Keeps daily
+    // nightly QA off the 20-RPD Gemini free-tier quota, but lets a
+    // weekly workflow or local run exercise the path on demand.
+    test.skip(!process.env.RUN_AI_TESTS, 'Set RUN_AI_TESTS=1 to run this test');
     test.skip(!process.env.GEMINI_API_KEY, 'GEMINI_API_KEY not provided, skipping AI test');
       
     await page.goto('/');

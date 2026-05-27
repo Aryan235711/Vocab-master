@@ -28,12 +28,31 @@ jobs:
           
       - name: Install dependencies
         run: npm install
-        
+
+      - name: Dictionary validation (fail-fast on bad entries)
+        # Runs before browsers + tests so a malformed word entry blocks
+        # the run in seconds instead of after a 10-minute Playwright wait.
+        run: npm run validate
+
+      - name: TypeScript check
+        run: npm run lint
+
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Tier 0 - Unit Tests (Vitest)
-        run: npm test
+      - name: Tier 0 - Unit Tests + Coverage (Vitest)
+        # Threshold gate is configured in vite.config.ts:
+        # lines/statements/functions 85%, branches 75% on src/utils,
+        # src/context, server.ts. PRs that drop below fail here.
+        run: npm run coverage
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
 
       - name: Tier 1 - Standard E2E Tests
         run: npm run test:e2e

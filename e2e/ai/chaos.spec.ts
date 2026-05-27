@@ -6,8 +6,9 @@ test.describe('Tier 2: AI Autonomous Flow - Chaos Monkey', () => {
   test.setTimeout(180000); 
 
   test('AI agent performs random chaos exploration without hallucination', async ({ page }) => {
-    // Skipping to preserve the 20 Requests Per Day free-tier quota
-    test.skip(true, 'Skipped to preserve Gemini free-tier quota');
+    // Run only when explicitly opted in (RUN_AI_TESTS=1). Keeps daily
+    // nightly QA off the 20-RPD Gemini free-tier quota.
+    test.skip(!process.env.RUN_AI_TESTS, 'Set RUN_AI_TESTS=1 to run this test');
     test.skip(!process.env.GEMINI_API_KEY, 'GEMINI_API_KEY not provided');
       
     await page.goto('/');
