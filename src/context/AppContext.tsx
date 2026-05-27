@@ -174,7 +174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ----------------------------------------------------
 
   // Streak-break detection runs once on mount (hydration).
-  // Subsequent streak updates are handled atomically inside updateDailyProgress.
+  // Subsequent streak updates are handled atomically inside recordReview.
   useEffect(() => {
     const today = startOfDay(new Date());
     const checkedStreak = checkStreakBreak(stats.lastStudyDate, today, stats.streak);
@@ -209,31 +209,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateDailyProgress = (isNewWord: boolean) => {
-    const today = startOfDay(new Date());
-    const todayStr = today.toISOString();
-    setStats((s: UserStats) => {
-      const isDifferentDay = s.lastStudyDate !== todayStr;
-      const newStreak = isDifferentDay
-        ? computeStreak(s.lastStudyDate, today, s.streak)
-        : s.streak;
-      const counters = computeDailyCounters(
-        isDifferentDay, isNewWord, s.wordsLearnedToday, s.reviewsCompletedToday
-      );
-
-      return {
-        ...s,
-        streak: newStreak,
-        lastStudyDate: todayStr,
-        ...counters,
-      };
-    });
-  };
-
   /**
    * Master interaction processor applying SM-2 algorithm modified heavily with LocII (Locally Integrated Intelligence) overrides.
-   * Exposes interaction constraints determining intervals applied.
-   * 
+   *
+   * Compute-then-commit: every derived value (fresh category stats, multiplier,
+   * next SRS state, daily counters, streak) is computed from current closure
+   * state BEFORE any setter is called. Then exactly one setStats + one
+   * setUserWords fire — no nested setters, safe under React 19 strict mode.
+   *
    * @param wordId Identifier for the word logic chunk.
    * @param quality Quality scalar measuring discrete cognitive feedback loops derived explicitly from user UX (0-5, Hard to Easy)
    */
@@ -244,42 +227,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const category = word.category;
     const isCorrect = quality >= 3;
+    const today = startOfDay(new Date());
+    const todayStr = today.toISOString();
 
-    // Precompute updated category stats ONCE to avoid stale closure reads.
-    // Both setStats and setUserWords use the functional updater form to read
-    // the latest state, and we derive the freshCatStats from the stats updater
-    // so the adaptive multiplier is always computed against current data.
-    setStats((s: UserStats) => {
-      const catStats = s.categoryStats[category] || { correct: 0, total: 0 };
-      const freshCatStats = {
-        ...s.categoryStats,
-        [category]: {
-          correct: catStats.correct + (isCorrect ? 1 : 0),
-          total: catStats.total + 1
-        }
-      };
+    // Fresh category stats — what categoryStats WILL be after this review.
+    // LocII reads from this, so the multiplier reflects the just-recorded answer.
+    const catStats = stats.categoryStats[category] || { correct: 0, total: 0 };
+    const freshCatStats = {
+      ...stats.categoryStats,
+      [category]: {
+        correct: catStats.correct + (isCorrect ? 1 : 0),
+        total: catStats.total + 1,
+      },
+    };
 
-      // Compute SRS update synchronously within the same state snapshot
-      const overallMultiplier = calculateAdaptiveMultiplier(category, word.difficulty, freshCatStats);
+    const overallMultiplier = calculateAdaptiveMultiplier(category, word.difficulty, freshCatStats);
 
-      setUserWords(prev => {
-        const currentWordState = prev[wordId];
-        const isNewWord = !currentWordState || currentWordState.status === 'new';
-        const nextState = calculateNextReviewState(word, currentWordState, quality, overallMultiplier);
+    const currentWordState = userWords[wordId];
+    const isNewWord = !currentWordState || currentWordState.status === 'new';
+    const nextState = calculateNextReviewState(word, currentWordState, quality, overallMultiplier);
 
-        updateDailyProgress(isNewWord);
+    const isDifferentDay = stats.lastStudyDate !== todayStr;
+    const newStreak = isDifferentDay
+      ? computeStreak(stats.lastStudyDate, today, stats.streak)
+      : stats.streak;
+    const counters = computeDailyCounters(
+      isDifferentDay, isNewWord, stats.wordsLearnedToday, stats.reviewsCompletedToday
+    );
 
-        return {
-          ...prev,
-          [wordId]: {
-            id: wordId,
-            ...nextState
-          }
-        };
-      });
+    setStats(s => ({
+      ...s,
+      categoryStats: freshCatStats,
+      streak: newStreak,
+      lastStudyDate: todayStr,
+      ...counters,
+    }));
 
-      return { ...s, categoryStats: freshCatStats };
-    });
+    setUserWords(prev => ({
+      ...prev,
+      [wordId]: { id: wordId, ...nextState },
+    }));
   };
 
   /** Fetches all words scheduled in user flow explicitly before or intersecting identical temporal frames. */
@@ -292,23 +279,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  /** Provides untracked structural objects prioritized by the user's chosen exam target. */
+  /** Provides untracked structural objects prioritized by the user's chosen exam target.
+   *  Words are bucketed by exam-specific frequency, each bucket is fully Fisher-Yates
+   *  shuffled, then concatenated highest-frequency-first. */
   const getNewCards = (limit: number) => {
     const newW = words.filter(w => !userWords[w.id]);
     const examTarget = settings.examTarget;
 
-    // Sort by exam-specific frequency (highest first)
-    newW.sort((a, b) => getExamFrequency(b, examTarget) - getExamFrequency(a, examTarget));
-
-    // Fisher-Yates shuffle within same-frequency groups to add variety
-    for (let i = newW.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      if (getExamFrequency(newW[i], examTarget) === getExamFrequency(newW[j], examTarget)) {
-        [newW[i], newW[j]] = [newW[j], newW[i]];
-      }
+    const buckets = new Map<number, WordData[]>();
+    for (const w of newW) {
+      const freq = getExamFrequency(w, examTarget);
+      const bucket = buckets.get(freq);
+      if (bucket) bucket.push(w);
+      else buckets.set(freq, [w]);
     }
 
-    return newW.slice(0, limit);
+    const sortedFreqs = Array.from(buckets.keys()).sort((a, b) => b - a);
+    const result: WordData[] = [];
+    for (const freq of sortedFreqs) {
+      const bucket = buckets.get(freq)!;
+      for (let i = bucket.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bucket[i], bucket[j]] = [bucket[j], bucket[i]];
+      }
+      result.push(...bucket);
+      if (result.length >= limit) break;
+    }
+
+    return result.slice(0, limit);
   };
 
   /** Completely resets volatile internal interactions effectively deleting accounts via context override mechanisms. */

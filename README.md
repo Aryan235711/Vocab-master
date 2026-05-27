@@ -1,6 +1,6 @@
 # VocabDost
 
-[![Nightly QA Tests](https://github.com/USERNAME/vocabdost/actions/workflows/nightly-qa.yml/badge.svg)](https://github.com/USERNAME/vocabdost/actions/workflows/nightly-qa.yml) 
+[![Nightly QA Tests](https://github.com/Aryan235711/Vocab-master/actions/workflows/nightly-qa.yml/badge.svg)](https://github.com/Aryan235711/Vocab-master/actions/workflows/nightly-qa.yml) 
 
 VocabDost is a dynamic, intelligent vocabulary and idiom learning application built with React, Vite, and Tailwind CSS. It leverages a custom, mathematically sound Spaced Repetition System (SRS) enhanced with a LocII (Locally Integrated Intelligence) engine to adapt to individual learning trajectories.
 

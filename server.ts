@@ -28,7 +28,7 @@ if (!GEMINI_API_KEY) {
 }
 
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
-const MODEL = 'gemini-3-flash-preview';
+const MODEL = 'gemini-2.5-flash-lite';
 
 // ─── Session Token Auth ──────────────────────────────────────────
 // The app requests a token on load. The server issues a short-lived token

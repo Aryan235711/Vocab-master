@@ -63,5 +63,12 @@ export default defineConfig(() => {
         },
       },
     },
+    // Vitest runs the pure-function unit suite under src/__tests__.
+    // Playwright owns everything under e2e/ — exclude it so vitest doesn't
+    // try to load `test.describe` from @playwright/test.
+    test: {
+      include: ['src/**/*.test.{ts,tsx}'],
+      exclude: ['e2e/**', 'node_modules/**', 'dist/**', 'playwright-report/**'],
+    },
   };
 });

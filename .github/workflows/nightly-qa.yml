@@ -31,7 +31,10 @@ jobs:
         
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
-        
+
+      - name: Tier 0 - Unit Tests (Vitest)
+        run: npm test
+
       - name: Tier 1 - Standard E2E Tests
         run: npm run test:e2e
         
