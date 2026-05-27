@@ -239,4 +239,43 @@ describe('calculateNextReviewState', () => {
       expect(result.interval).toBeGreaterThanOrEqual(1);
     });
   });
+
+  // ─── Asymmetric LocII floor ────────────────────────────────────
+  // When the user is doing well (multiplier >= 1.0), intervals must
+  // grow monotonically. When LocII signals struggle (multiplier < 1.0),
+  // contraction is allowed down to a 1-day floor.
+
+  describe('asymmetric LocII floor', () => {
+    it('enforces monotonic growth when multiplier >= 1.0', () => {
+      // 6 * 2.5 * 1.0 = 15 → grows from 6 ✓
+      const state = makeUserWord({ repetitions: 2, interval: 6, easeFactor: 2.5 });
+      const result = calculateNextReviewState(word, state, 4, 1.0);
+      expect(result.interval).toBeGreaterThan(state.interval);
+    });
+
+    it('allows contraction when multiplier < 1.0', () => {
+      // Without contraction the floor would force interval >= 11.
+      // With LocII signaling struggle, 10 * 2.0 * 0.4 = 8 should be allowed.
+      const state = makeUserWord({ repetitions: 3, interval: 10, easeFactor: 2.0 });
+      const result = calculateNextReviewState(word, state, 3, 0.4);
+      // 10 * 2.0 * 0.4 = 8 → contracted (less than prev interval of 10)
+      expect(result.interval).toBe(8);
+      expect(result.interval).toBeLessThan(state.interval);
+    });
+
+    it('contraction never drops below 1 day', () => {
+      // Heavy contraction signal should still leave at least 1 day.
+      const state = makeUserWord({ repetitions: 3, interval: 4, easeFactor: 1.3 });
+      const result = calculateNextReviewState(word, state, 3, 0.1);
+      // 4 * 1.3 * 0.1 = 0.52 → max(1, round) = 1
+      expect(result.interval).toBe(1);
+    });
+
+    it('ceiling of 365 days still applies under any multiplier', () => {
+      const state = makeUserWord({ repetitions: 10, interval: 300, easeFactor: 2.5 });
+      const result = calculateNextReviewState(word, state, 5, 1.2);
+      // 300 * 2.5 * 1.2 = 900 → capped at 365
+      expect(result.interval).toBe(365);
+    });
+  });
 });

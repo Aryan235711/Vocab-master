@@ -78,9 +78,16 @@ export function calculateNextReviewState(
       interval = Math.round(interval * easeFactor * overallMultiplier);
     }
     
-    // Safety Net 1: Floor
-    // Enforce a minimum interval progression to prevent shrinkage from heavy LocII penalties
-    interval = Math.max(current.interval + 1, Math.round(interval));
+    // Safety Net 1: Asymmetric floor.
+    // When LocII signals "user is doing fine here" (multiplier >= 1.0), enforce
+    // monotonic growth — prevents tiny EF-decay jitter from shrinking a stable
+    // interval. When LocII signals struggle (multiplier < 1.0), allow the
+    // interval to contract down to 1 day so the LocII brake actually bites.
+    if (overallMultiplier >= 1.0) {
+      interval = Math.max(current.interval + 1, Math.round(interval));
+    } else {
+      interval = Math.max(1, Math.round(interval));
+    }
 
     // Safety Net 2: Ceiling
     // Cap the maximum interval at 365 days to ensure mastered words are checked annually

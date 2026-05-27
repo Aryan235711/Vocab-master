@@ -119,7 +119,7 @@ Words carry static difficulty flags (`Easy`, `Medium`, `Hard`) that stack with c
 When the SM-2 engine queries the interval ($I$) step, the overall Multiplier ($M$) is injected:
 $$ M = C_{mult} \times D_{mult} $$
 
-**Result:** A user struggling with "Hard" words mapping to the "Idioms" category (assuming idiom accuracy $<60\%$) will face a punishing compound multiplier of $0.8 \times 0.85 = 0.68$. A standard 10-day interval instantly aggressively contracts to a ~6-day interval to prevent memory decay.
+**Result:** A user struggling with "Hard" words in the "Idioms" category (idiom accuracy $<60\%$) faces a compound multiplier of $0.8 \times 0.85 = 0.68$. For an SM-2 step that would naturally schedule $I_{prev} \times EF$ days out, LocII dials it down to $I_{prev} \times EF \times 0.68$. An **asymmetric floor** governs the final value: when $M \ge 1.0$ intervals must grow monotonically (preventing tiny EF-decay jitter from shrinking stable cards), but when $M < 1.0$ the LocII brake is allowed to contract intervals all the way down to a 1-day minimum. That way the brake actually bites where it should, while well-behaved cards still ratchet upward.
 
 ### 5. Loop & User Interaction Hook
 The adaptation is strictly tightly coupled to the user's active interactions within the **Flashcard Assessment Hub**. 

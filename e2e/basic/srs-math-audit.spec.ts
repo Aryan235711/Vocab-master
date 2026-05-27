@@ -20,7 +20,7 @@ test.describe('Tier 1: SRS Engine Mathematical Audit', () => {
     examFrequency: { 'SSC_CGL': 8 }
   };
 
-  test('Worst-case scenario: Interval never shrinks despite heavy mathematical penalties', () => {
+  test('Struggling user: LocII contracts intervals but they stay in valid bounds', () => {
     const strugglingStats = { 'Vocabulary': { correct: 2, total: 10 } };
     const overallMultiplier = calculateAdaptiveMultiplier(mockWord.category, mockWord.difficulty, strugglingStats);
     expect(overallMultiplier).toBeLessThan(1.0);
@@ -29,10 +29,9 @@ test.describe('Tier 1: SRS Engine Mathematical Audit', () => {
 
     for (let i = 0; i < 50; i++) {
       const nextState = calculateNextReviewState(mockWord, currentState, 3, overallMultiplier);
+      // Sanity rails always hold
       expect(nextState.easeFactor).toBeGreaterThanOrEqual(1.3);
-      if (currentState) {
-        expect(nextState.interval).toBeGreaterThan(currentState.interval);
-      }
+      expect(nextState.interval).toBeGreaterThanOrEqual(1);
       expect(nextState.interval).toBeLessThanOrEqual(365);
       currentState = { id: mockWord.id, ...nextState };
     }
