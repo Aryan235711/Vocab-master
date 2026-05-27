@@ -96,3 +96,50 @@ export function computeBestScore(
 ): number {
   return newScore > currentBest ? newScore : currentBest;
 }
+
+/**
+ * Single-day activity entry stored per date in the activity log.
+ * `learned` counts first-touch interactions (new words seen today),
+ * `reviews` counts re-reviews of already-known words.
+ */
+export interface DailyActivityEntry {
+  reviews: number;
+  learned: number;
+}
+
+/**
+ * Append-or-increment helper for the per-day activity log that drives the
+ * heatmap on ProgressTab. Pure: returns a new object, never mutates.
+ *
+ * @param current Existing log keyed by YYYY-MM-DD
+ * @param dateKey YYYY-MM-DD for the day to increment
+ * @param isNewWord true → bump `learned`; false → bump `reviews`
+ */
+export function updateDailyActivity(
+  current: Record<string, DailyActivityEntry>,
+  dateKey: string,
+  isNewWord: boolean
+): Record<string, DailyActivityEntry> {
+  const existing = current[dateKey] || { reviews: 0, learned: 0 };
+  return {
+    ...current,
+    [dateKey]: {
+      reviews: existing.reviews + (isNewWord ? 0 : 1),
+      learned: existing.learned + (isNewWord ? 1 : 0),
+    },
+  };
+}
+
+/**
+ * Convenience converter: Date → 'YYYY-MM-DD' in LOCAL timezone.
+ * We use the local-date getters instead of `toISOString()` because the
+ * caller often passes `startOfDay(new Date())`, which is local midnight.
+ * Slicing that as UTC would push timezones east of UTC to the previous
+ * calendar day, putting heatmap cells under the wrong key.
+ */
+export function toDateKey(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}

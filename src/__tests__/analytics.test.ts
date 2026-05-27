@@ -5,6 +5,8 @@ import {
   checkStreakBreak,
   computeDailyCounters,
   computeBestScore,
+  updateDailyActivity,
+  toDateKey,
 } from '../utils/analytics';
 import { startOfDay, subDays } from 'date-fns';
 
@@ -142,5 +144,56 @@ describe('computeBestScore', () => {
 
   it('handles zero new score', () => {
     expect(computeBestScore(30, 0)).toBe(30);
+  });
+});
+
+// ─── updateDailyActivity ────────────────────────────────────────
+
+describe('updateDailyActivity', () => {
+  it('adds a fresh entry on a previously-empty date', () => {
+    const result = updateDailyActivity({}, '2026-05-27', true);
+    expect(result).toEqual({ '2026-05-27': { reviews: 0, learned: 1 } });
+  });
+
+  it('increments learned for a new word', () => {
+    const base = { '2026-05-27': { reviews: 4, learned: 2 } };
+    const result = updateDailyActivity(base, '2026-05-27', true);
+    expect(result['2026-05-27']).toEqual({ reviews: 4, learned: 3 });
+  });
+
+  it('increments reviews for a repeat word', () => {
+    const base = { '2026-05-27': { reviews: 4, learned: 2 } };
+    const result = updateDailyActivity(base, '2026-05-27', false);
+    expect(result['2026-05-27']).toEqual({ reviews: 5, learned: 2 });
+  });
+
+  it('preserves entries for other days', () => {
+    const base = {
+      '2026-05-26': { reviews: 8, learned: 3 },
+      '2026-05-27': { reviews: 1, learned: 1 },
+    };
+    const result = updateDailyActivity(base, '2026-05-27', true);
+    expect(result['2026-05-26']).toEqual({ reviews: 8, learned: 3 });
+    expect(result['2026-05-27']).toEqual({ reviews: 1, learned: 2 });
+  });
+
+  it('does not mutate the input object', () => {
+    const base = { '2026-05-27': { reviews: 1, learned: 1 } };
+    const snapshot = JSON.stringify(base);
+    updateDailyActivity(base, '2026-05-27', true);
+    expect(JSON.stringify(base)).toBe(snapshot);
+  });
+});
+
+describe('toDateKey', () => {
+  it('returns YYYY-MM-DD in local timezone', () => {
+    // Construct via local-date constructor so the test is TZ-agnostic.
+    const d = new Date(2026, 4, 27, 10, 0, 0); // May 27, 2026 10:00 local
+    expect(toDateKey(d)).toBe('2026-05-27');
+  });
+
+  it('zero-pads single-digit months and days', () => {
+    const d = new Date(2026, 0, 3, 9, 0, 0); // Jan 3, 2026
+    expect(toDateKey(d)).toBe('2026-01-03');
   });
 });

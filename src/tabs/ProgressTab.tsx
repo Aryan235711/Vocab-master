@@ -6,6 +6,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { Star, Flame } from 'lucide-react';
+import ActivityHeatmap from '../components/ActivityHeatmap';
 
 /**
  * Centralized dashboard controller parsing raw accuracy and streak data into gamified UI components.
@@ -101,17 +102,7 @@ export default function ProgressTab() {
 
       <div className="bg-white rounded-[32px] p-6 border border-slate-200 shadow-sm">
         <h3 className="text-lg font-bold mb-4">Activity Heatmap</h3>
-        {stats.streak === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 text-sm font-medium border-dashed p-4">
-            <p className="mb-1 text-center font-bold text-slate-600">No activity yet</p>
-            <p className="text-xs text-slate-400 text-center">Start learning words to build your streak and light up this heatmap!</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-32 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 text-sm font-medium border-dashed p-4">
-            <p className="mb-1 text-center font-bold text-slate-600">You're maintaining a {stats.streak}-day streak! 🔥</p>
-            <p className="text-xs text-slate-400 text-center">Detailed activity visualization charts are arriving in an upcoming update.</p>
-          </div>
-        )}
+        <ActivityHeatmap activity={stats.dailyActivity || {}} />
       </div>
       <div className="bg-white rounded-[32px] p-6 border border-slate-200 shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>

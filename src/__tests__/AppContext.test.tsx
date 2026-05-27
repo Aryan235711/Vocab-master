@@ -13,6 +13,7 @@ import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { AppProvider, useApp } from '../context/AppContext';
 import { INITIAL_WORDS } from '../data/words';
+import { toDateKey } from '../utils/analytics';
 
 // loadFullDictionary calls fetch('/api/dictionary'). Stub it so jsdom
 // doesn't reach the network — the fallback words on INITIAL_WORDS are
@@ -159,6 +160,28 @@ describe('recordReview', () => {
     const { result } = renderHook(() => useApp(), { wrapper });
     expect(() => act(() => result.current.recordReview('does-not-exist', 4))).not.toThrow();
     expect(result.current.userWords).toEqual({});
+  });
+
+  it('appends today\'s entry to dailyActivity (drives the heatmap)', () => {
+    const { result } = renderHook(() => useApp(), { wrapper });
+    expect(result.current.stats.dailyActivity).toEqual({});
+
+    const todayKey = toDateKey(new Date());
+    const wordId = result.current.words[0].id;
+    act(() => result.current.recordReview(wordId, 4));
+
+    // First touch of a new word → learned++, reviews stays at 0.
+    expect(result.current.stats.dailyActivity[todayKey]).toEqual({
+      reviews: 0,
+      learned: 1,
+    });
+
+    // Re-reviewing the same word later → reviews++.
+    act(() => result.current.recordReview(wordId, 4));
+    expect(result.current.stats.dailyActivity[todayKey]).toEqual({
+      reviews: 1,
+      learned: 1,
+    });
   });
 });
 

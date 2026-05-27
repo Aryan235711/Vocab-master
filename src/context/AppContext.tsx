@@ -8,7 +8,16 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WordData, INITIAL_WORDS, loadFullDictionary, getExamFrequency } from '../data/words';
 import { isBefore, isSameDay, startOfDay } from 'date-fns';
 import { calculateAdaptiveMultiplier, calculateNextReviewState } from '../utils/srs';
-import { computeLevel, computeStreak, checkStreakBreak, computeDailyCounters, computeBestScore } from '../utils/analytics';
+import {
+  computeLevel,
+  computeStreak,
+  checkStreakBreak,
+  computeDailyCounters,
+  computeBestScore,
+  updateDailyActivity,
+  toDateKey,
+  type DailyActivityEntry,
+} from '../utils/analytics';
 
 /**
  * Aggregates all user performance, metrics, and application engagement data.
@@ -22,6 +31,7 @@ export interface UserStats {
   level: number; // Derived dynamically from XP
   bestScores: Record<string, number>; // High scores across minigames
   categoryStats: Record<string, { correct: number; total: number }>; // Tracks raw accuracy across language constraints (Vocabulary, Idioms, etc.)
+  dailyActivity: Record<string, DailyActivityEntry>; // Append-only per-day { reviews, learned } log feeding the heatmap
 }
 
 /** Specific status of a word in the algorithm pipeline */
@@ -76,7 +86,8 @@ const defaultStats: UserStats = {
     'sentenceFill': 0,
     'mixedMock': 0
   },
-  categoryStats: {}
+  categoryStats: {},
+  dailyActivity: {}
 };
 
 const defaultSettings = {
@@ -122,11 +133,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return { 
-          ...defaultStats, 
-          ...parsed, 
+        return {
+          ...defaultStats,
+          ...parsed,
           bestScores: { ...defaultStats.bestScores, ...(parsed.bestScores || {}) },
-          categoryStats: { ...defaultStats.categoryStats, ...(parsed.categoryStats || {}) }
+          categoryStats: { ...defaultStats.categoryStats, ...(parsed.categoryStats || {}) },
+          dailyActivity: { ...defaultStats.dailyActivity, ...(parsed.dailyActivity || {}) },
         };
       } catch (e) {
         console.error('Failed to parse stats from local storage', e);
@@ -254,6 +266,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const counters = computeDailyCounters(
       isDifferentDay, isNewWord, stats.wordsLearnedToday, stats.reviewsCompletedToday
     );
+    const freshDailyActivity = updateDailyActivity(
+      stats.dailyActivity, toDateKey(today), isNewWord
+    );
 
     setStats(s => ({
       ...s,
@@ -261,6 +276,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       streak: newStreak,
       lastStudyDate: todayStr,
       ...counters,
+      dailyActivity: freshDailyActivity,
     }));
 
     setUserWords(prev => ({
