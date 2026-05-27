@@ -15,6 +15,10 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+// Trust the first proxy hop (Render sits in front of us). Without this,
+// req.ip resolves to the proxy IP and per-IP limits become per-process
+// global limits. With trust-proxy=1, Express reads X-Forwarded-For[0].
+app.set('trust proxy', 1);
 app.use(express.json());
 
 // ─── Static Frontend (production) ────────────────────────────────
@@ -56,8 +60,9 @@ function checkSessionCreateLimit(ip: string): boolean {
   return true;
 }
 
-// Clean expired sessions every 10 minutes
-setInterval(() => {
+// Clean expired sessions every 10 minutes. .unref() lets the process exit
+// even if this interval is the only thing still scheduled (matters under tests).
+const sessionSweeper = setInterval(() => {
   const now = Date.now();
   for (const [token, expiresAt] of activeSessions) {
     if (now > expiresAt) activeSessions.delete(token);
@@ -66,6 +71,7 @@ setInterval(() => {
     if (now > entry.resetAt) sessionCreateMap.delete(ip);
   }
 }, 10 * 60 * 1000);
+sessionSweeper.unref();
 
 app.post('/api/session', (req, res) => {
   const clientIp = req.ip || 'unknown';
@@ -114,12 +120,13 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-setInterval(() => {
+const rateLimitSweeper = setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of rateLimitMap) {
     if (now > entry.resetAt) rateLimitMap.delete(ip);
   }
 }, RATE_WINDOW_MS);
+rateLimitSweeper.unref();
 
 // ─── Input Validation ────────────────────────────────────────────
 
@@ -235,7 +242,12 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`VocabDost server running on port ${PORT}`);
-});
+// Skip listen() under test runner — supertest binds an ephemeral port via app.handle().
+if (process.env.NODE_ENV !== 'test') {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`VocabDost server running on port ${PORT}`);
+  });
+}
+
+export { app };
