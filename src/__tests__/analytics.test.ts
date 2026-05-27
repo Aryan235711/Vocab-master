@@ -8,6 +8,8 @@ import {
   updateDailyActivity,
   toDateKey,
   detectSessionFatigue,
+  updateCategoryAccuracyLog,
+  computeTimeWeightedRate,
 } from '../utils/analytics';
 import { startOfDay, subDays } from 'date-fns';
 
@@ -268,5 +270,106 @@ describe('detectSessionFatigue', () => {
     expect(r.earlyAccuracy).toBe(1);
     expect(r.recentAccuracy).toBe(0);
     expect(r.fatigued).toBe(true);
+  });
+});
+
+// ─── updateCategoryAccuracyLog (LocII Tier 1.1) ─────────────────
+
+describe('updateCategoryAccuracyLog', () => {
+  it('creates a new category bucket on first write', () => {
+    const result = updateCategoryAccuracyLog({}, 'Vocabulary', '2026-05-27', true);
+    expect(result).toEqual({
+      Vocabulary: { '2026-05-27': { correct: 1, total: 1 } },
+    });
+  });
+
+  it('increments correct only when isCorrect=true', () => {
+    let log = updateCategoryAccuracyLog({}, 'Idioms', '2026-05-27', true);
+    log = updateCategoryAccuracyLog(log, 'Idioms', '2026-05-27', false);
+    log = updateCategoryAccuracyLog(log, 'Idioms', '2026-05-27', true);
+    expect(log.Idioms['2026-05-27']).toEqual({ correct: 2, total: 3 });
+  });
+
+  it('keeps separate buckets per day within the same category', () => {
+    let log = updateCategoryAccuracyLog({}, 'Vocabulary', '2026-05-26', true);
+    log = updateCategoryAccuracyLog(log, 'Vocabulary', '2026-05-27', false);
+    expect(log.Vocabulary['2026-05-26']).toEqual({ correct: 1, total: 1 });
+    expect(log.Vocabulary['2026-05-27']).toEqual({ correct: 0, total: 1 });
+  });
+
+  it('keeps separate categories independent', () => {
+    let log = updateCategoryAccuracyLog({}, 'Vocabulary', '2026-05-27', true);
+    log = updateCategoryAccuracyLog(log, 'Idioms', '2026-05-27', false);
+    expect(log.Vocabulary['2026-05-27']).toEqual({ correct: 1, total: 1 });
+    expect(log.Idioms['2026-05-27']).toEqual({ correct: 0, total: 1 });
+  });
+
+  it('does not mutate the input', () => {
+    const base = { Vocabulary: { '2026-05-27': { correct: 1, total: 1 } } };
+    const snapshot = JSON.stringify(base);
+    updateCategoryAccuracyLog(base, 'Vocabulary', '2026-05-27', true);
+    expect(JSON.stringify(base)).toBe(snapshot);
+  });
+});
+
+// ─── computeTimeWeightedRate (LocII Tier 1.1) ───────────────────
+
+describe('computeTimeWeightedRate', () => {
+  const TODAY = new Date(2026, 4, 27, 12, 0, 0); // May 27, 2026 local
+
+  it('returns the neutral Laplace prior (0.5) on an empty bucket map', () => {
+    expect(computeTimeWeightedRate(undefined, TODAY)).toBe(0.5);
+    expect(computeTimeWeightedRate({}, TODAY)).toBe(0.5);
+  });
+
+  it('reproduces the unweighted Laplace rate when all data is today', () => {
+    // weight = 0.5^0 = 1 → matches the plain rate formula
+    const rate = computeTimeWeightedRate(
+      { '2026-05-27': { correct: 7, total: 10 } },
+      TODAY
+    );
+    expect(rate).toBeCloseTo((7 + 1) / (10 + 2));
+  });
+
+  it('decays older buckets exponentially per half-life', () => {
+    // 14-day-old bucket should weigh 0.5, today's full weight.
+    const rate = computeTimeWeightedRate(
+      {
+        '2026-05-13': { correct: 0, total: 10 }, // 14 days ago, weight 0.5
+        '2026-05-27': { correct: 10, total: 10 },
+      },
+      TODAY,
+      14
+    );
+    // Weighted correct = 10. Weighted total = 5 + 10 = 15.
+    // Smoothed = (10 + 1)/(15 + 2) ≈ 0.647
+    expect(rate).toBeCloseTo(11 / 17, 3);
+  });
+
+  it('ancient mistakes barely move the needle', () => {
+    // 84-day-old (6 half-lives) bucket weighs 1/64 ≈ 0.0156.
+    const rate = computeTimeWeightedRate(
+      {
+        '2026-03-04': { correct: 0, total: 100 }, // 84 days ago
+        '2026-05-27': { correct: 10, total: 10 },
+      },
+      TODAY,
+      14
+    );
+    // Weighted correct ≈ 10. Weighted total ≈ 10 + 100*0.0156 ≈ 11.56.
+    // Smoothed ≈ 11/13.56 ≈ 0.81 → still in "excels" range
+    expect(rate).toBeGreaterThan(0.75);
+  });
+
+  it('clamps negative ages to zero (future buckets get full weight, not extrapolated)', () => {
+    const future = new Date(2026, 5, 10, 12, 0, 0); // June 10
+    const rate = computeTimeWeightedRate(
+      { '2026-06-15': { correct: 0, total: 10 } }, // 5 days in the future
+      future,
+      14
+    );
+    // Future bucket should be treated as "today" (weight 1), not amplified.
+    // weighted correct = 0, weighted total = 10. Smoothed = 1/12 ≈ 0.083
+    expect(rate).toBeCloseTo(1 / 12, 3);
   });
 });

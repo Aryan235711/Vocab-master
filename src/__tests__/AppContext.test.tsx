@@ -162,6 +162,22 @@ describe('recordReview', () => {
     expect(result.current.userWords).toEqual({});
   });
 
+  it('records into categoryAccuracyLog so LocII can time-weight (Tier 1.1)', () => {
+    const { result } = renderHook(() => useApp(), { wrapper });
+    expect(result.current.stats.categoryAccuracyLog).toEqual({});
+
+    const todayKey = toDateKey(new Date());
+    const vocab = result.current.words.find(w => w.category === 'Vocabulary')!;
+
+    act(() => result.current.recordReview(vocab.id, 4));
+    expect(result.current.stats.categoryAccuracyLog.Vocabulary[todayKey])
+      .toEqual({ correct: 1, total: 1 });
+
+    act(() => result.current.recordReview(vocab.id, 0));
+    expect(result.current.stats.categoryAccuracyLog.Vocabulary[todayKey])
+      .toEqual({ correct: 1, total: 2 });
+  });
+
   it('appends today\'s entry to dailyActivity (drives the heatmap)', () => {
     const { result } = renderHook(() => useApp(), { wrapper });
     expect(result.current.stats.dailyActivity).toEqual({});

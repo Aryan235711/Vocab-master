@@ -144,6 +144,79 @@ export function toDateKey(d: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// ─── Per-Category Accuracy Log (LocII Tier 1.1) ──────────────────
+
+export interface AccuracyBucket {
+  correct: number;
+  total: number;
+}
+
+/** Per-category accuracy log keyed as `category → YYYY-MM-DD → {correct,total}`. */
+export type CategoryAccuracyLog = Record<string, Record<string, AccuracyBucket>>;
+
+/**
+ * Records one review's outcome into the per-day bucket for its category.
+ * Pure: returns a new object, never mutates.
+ */
+export function updateCategoryAccuracyLog(
+  current: CategoryAccuracyLog,
+  category: string,
+  dateKey: string,
+  isCorrect: boolean
+): CategoryAccuracyLog {
+  const catBuckets = current[category] || {};
+  const bucket = catBuckets[dateKey] || { correct: 0, total: 0 };
+  return {
+    ...current,
+    [category]: {
+      ...catBuckets,
+      [dateKey]: {
+        correct: bucket.correct + (isCorrect ? 1 : 0),
+        total: bucket.total + 1,
+      },
+    },
+  };
+}
+
+/**
+ * Computes a Laplace-smoothed accuracy rate where each bucket's
+ * contribution decays exponentially with age. A bucket from
+ * `halfLifeDays` ago weighs 0.5; from 2× ago weighs 0.25; etc.
+ *
+ * Pure: no state, no date-fns coupling.
+ *
+ * @param buckets per-day buckets for one category (or undefined → empty)
+ * @param today reference date for decay computation
+ * @param halfLifeDays days until weight halves (default 14)
+ */
+export function computeTimeWeightedRate(
+  buckets: Record<string, AccuracyBucket> | undefined,
+  today: Date,
+  halfLifeDays: number = 14
+): number {
+  if (!buckets || Object.keys(buckets).length === 0) {
+    // Laplace prior over zero data → 0.5 (neutral).
+    return 0.5;
+  }
+  const todayMs = today.getTime();
+  let weightedCorrect = 0;
+  let weightedTotal = 0;
+  for (const [dateKey, bucket] of Object.entries(buckets)) {
+    // Parse the YYYY-MM-DD key as a LOCAL date (matches toDateKey output).
+    const [y, m, d] = dateKey.split('-').map(Number);
+    const bucketDate = new Date(y, m - 1, d);
+    const daysAgo = Math.max(
+      0,
+      (todayMs - bucketDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const weight = Math.pow(0.5, daysAgo / halfLifeDays);
+    weightedCorrect += weight * bucket.correct;
+    weightedTotal += weight * bucket.total;
+  }
+  // Laplace smoothing using the weighted total as effective sample size.
+  return (weightedCorrect + 1) / (weightedTotal + 2);
+}
+
 // ─── Session Fatigue Detection (LocII Tier 1.2) ──────────────────
 
 export interface SessionFatigueSignal {

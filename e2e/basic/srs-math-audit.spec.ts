@@ -21,8 +21,13 @@ test.describe('Tier 1: SRS Engine Mathematical Audit', () => {
   };
 
   test('Struggling user: LocII contracts intervals but they stay in valid bounds', () => {
-    const strugglingStats = { 'Vocabulary': { correct: 2, total: 10 } };
-    const overallMultiplier = calculateAdaptiveMultiplier(mockWord.category, mockWord.difficulty, strugglingStats);
+    // New time-bucketed log shape. Place all activity on a recent day so
+    // the decay weight is ≈ 1 and the smoothing math matches the old test.
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const strugglingLog = { Vocabulary: { [todayKey]: { correct: 2, total: 10 } } };
+    const overallMultiplier = calculateAdaptiveMultiplier(
+      mockWord.category, mockWord.difficulty, strugglingLog
+    );
     expect(overallMultiplier).toBeLessThan(1.0);
 
     let currentState: UserWord | undefined = undefined;
@@ -38,9 +43,12 @@ test.describe('Tier 1: SRS Engine Mathematical Audit', () => {
   });
 
   test('Best-case scenario: Interval caps at 365 days to ensure annual checkups', () => {
-    const excellingStats = { 'Vocabulary': { correct: 20, total: 20 } };
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const excellingLog = { Vocabulary: { [todayKey]: { correct: 20, total: 20 } } };
     const easyWord: WordData = { ...mockWord, difficulty: 'Easy' };
-    const overallMultiplier = calculateAdaptiveMultiplier(easyWord.category, easyWord.difficulty, excellingStats);
+    const overallMultiplier = calculateAdaptiveMultiplier(
+      easyWord.category, easyWord.difficulty, excellingLog
+    );
     expect(overallMultiplier).toBeGreaterThan(1.0);
 
     let currentState: UserWord | undefined = undefined;

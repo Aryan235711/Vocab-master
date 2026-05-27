@@ -1,28 +1,41 @@
 import { UserWord } from '../context/AppContext';
 import { WordData } from '../data/words';
 import { addDays } from 'date-fns';
+import { computeTimeWeightedRate, type CategoryAccuracyLog } from './analytics';
 
 /**
- * Calculates adaptive modifiers based on user performance in specific word categories
- * and the inherent difficulty of the word itself.
- * 
- * @param category The category of the word (e.g., 'Vocabulary', 'Idioms')
- * @param difficulty The generic difficulty level of the word
- * @param categoryStats The user's historical performance statistics across categories
- * @returns A multiplier to adjust the Spaced Repetition interval
+ * Calculates adaptive modifiers based on user performance in specific word
+ * categories and the inherent difficulty of the word itself.
+ *
+ * LocII Tier 1.1: the category rate is now computed via exponential decay
+ * over per-day buckets (recent reviews count more). A 14-day half-life
+ * means a mistake from 2 weeks ago is half as load-bearing as one today.
+ *
+ * @param category   Category of the word (e.g., 'Vocabulary', 'Idioms')
+ * @param difficulty Inherent difficulty label
+ * @param accuracyLog Per-category per-day buckets ({ category: { dateKey: {correct, total} } })
+ * @param options.today reference date for decay (default: now)
+ * @param options.halfLifeDays days until a bucket's weight halves (default 14)
+ * @returns Multiplier to inject into the SM-2 interval calculation
  */
 export function calculateAdaptiveMultiplier(
   category: string,
   difficulty: string,
-  categoryStats: Record<string, { correct: number; total: number }>
+  accuracyLog: CategoryAccuracyLog,
+  options: { today?: Date; halfLifeDays?: number } = {}
 ): number {
-  const catStats = categoryStats[category] || { correct: 0, total: 0 };
-  
-  // Laplace smoothing to prevent extreme jumps initially
-  const smoothedRate = (catStats.correct + 1) / (catStats.total + 2);
+  const today = options.today ?? new Date();
+  const halfLifeDays = options.halfLifeDays ?? 14;
 
-  // LocII (Locally Integrated Intelligence) Engine:
-  // Dynamically alters the spacing interval based on how well the user performs in this SPECIFIC category
+  // Time-weighted Laplace-smoothed rate for this category.
+  const smoothedRate = computeTimeWeightedRate(
+    accuracyLog[category],
+    today,
+    halfLifeDays
+  );
+
+  // LocII (Locally Integrated Intelligence) Engine: dynamically alters the
+  // spacing interval based on weighted accuracy in this specific category.
   let lociiMultiplier = 1.0;
   if (smoothedRate < 0.6) {
     lociiMultiplier = 0.8; // User struggles here; decrease interval (increase frequency)

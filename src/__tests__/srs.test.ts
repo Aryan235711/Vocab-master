@@ -2,6 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { calculateAdaptiveMultiplier, calculateNextReviewState } from '../utils/srs';
 import type { UserWord } from '../context/AppContext';
 import type { WordData } from '../data/words';
+import type { CategoryAccuracyLog } from '../utils/analytics';
+
+// Fixed "today" + dateKey helpers so the time-decay math is deterministic.
+const FIXED_TODAY = new Date(2026, 4, 27, 12, 0, 0); // May 27, 2026 local
+const todayKey = '2026-05-27';
+
+/** Build a single-bucket accuracy log dated today. Equivalent to the old
+ *  Laplace-only signature {Category: {correct, total}} but expressed in
+ *  the new time-bucketed shape so existing assertions hold. */
+const logToday = (category: string, correct: number, total: number): CategoryAccuracyLog => ({
+  [category]: { [todayKey]: { correct, total } },
+});
 
 // Minimal word fixture for tests
 const makeWord = (overrides?: Partial<WordData>): WordData => ({
@@ -33,65 +45,94 @@ const makeUserWord = (overrides?: Partial<UserWord>): UserWord => ({
 
 describe('calculateAdaptiveMultiplier', () => {
   it('returns 1.0 for medium difficulty with balanced stats', () => {
-    // 7/10 correct → smoothed = 8/12 = 0.667 → between 0.6 and 0.85 → multiplier 1.0
-    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium', {
-      Vocabulary: { correct: 7, total: 10 },
-    });
+    // All buckets today → no decay. 7/10 correct → smoothed = 8/12 = 0.667 → in [0.6, 0.85] → 1.0
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium',
+      logToday('Vocabulary', 7, 10), { today: FIXED_TODAY });
     expect(result).toBe(1.0);
   });
 
   it('returns 0.8 when user struggles in category (low accuracy)', () => {
-    // 2/10 correct → smoothed = 3/12 = 0.25 → < 0.6 → 0.8
-    const result = calculateAdaptiveMultiplier('Idioms', 'Medium', {
-      Idioms: { correct: 2, total: 10 },
-    });
+    // 2/10 → smoothed = 3/12 = 0.25 → < 0.6 → 0.8
+    const result = calculateAdaptiveMultiplier('Idioms', 'Medium',
+      logToday('Idioms', 2, 10), { today: FIXED_TODAY });
     expect(result).toBe(0.8);
   });
 
   it('returns 1.2 when user excels in category (high accuracy)', () => {
-    // 19/20 correct → smoothed = 20/22 = 0.909 → > 0.85 → 1.2
-    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium', {
-      Vocabulary: { correct: 19, total: 20 },
-    });
+    // 19/20 → smoothed = 20/22 = 0.909 → > 0.85 → 1.2
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium',
+      logToday('Vocabulary', 19, 20), { today: FIXED_TODAY });
     expect(result).toBe(1.2);
   });
 
   it('applies difficulty multiplier for Hard words', () => {
-    // Balanced accuracy (1.0) * Hard difficulty (0.85) = 0.85
-    const result = calculateAdaptiveMultiplier('Vocabulary', 'Hard', {
-      Vocabulary: { correct: 7, total: 10 },
-    });
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Hard',
+      logToday('Vocabulary', 7, 10), { today: FIXED_TODAY });
     expect(result).toBeCloseTo(0.85);
   });
 
   it('applies difficulty multiplier for Easy words', () => {
-    // Balanced accuracy (1.0) * Easy difficulty (1.15) = 1.15
-    const result = calculateAdaptiveMultiplier('Vocabulary', 'Easy', {
-      Vocabulary: { correct: 7, total: 10 },
-    });
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Easy',
+      logToday('Vocabulary', 7, 10), { today: FIXED_TODAY });
     expect(result).toBeCloseTo(1.15);
   });
 
   it('compounds category struggle + hard difficulty', () => {
-    // Low accuracy (0.8) * Hard (0.85) = 0.68
-    const result = calculateAdaptiveMultiplier('Idioms', 'Hard', {
-      Idioms: { correct: 2, total: 10 },
-    });
+    const result = calculateAdaptiveMultiplier('Idioms', 'Hard',
+      logToday('Idioms', 2, 10), { today: FIXED_TODAY });
     expect(result).toBeCloseTo(0.8 * 0.85);
   });
 
-  it('uses Laplace smoothing for empty stats', () => {
-    // No data → smoothed = 1/2 = 0.5 → < 0.6 → 0.8
-    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium', {});
+  it('uses neutral Laplace prior for empty log', () => {
+    // No data → rate = 0.5 → < 0.6 → 0.8
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium', {}, { today: FIXED_TODAY });
     expect(result).toBe(0.8);
   });
 
-  it('uses Laplace smoothing for missing category', () => {
-    const result = calculateAdaptiveMultiplier('Phrasal Verbs', 'Medium', {
-      Vocabulary: { correct: 10, total: 10 },
-    });
-    // Phrasal Verbs not in stats → smoothed = 1/2 = 0.5 → 0.8
+  it('uses neutral Laplace prior for a category with no buckets', () => {
+    const result = calculateAdaptiveMultiplier('Phrasal Verbs', 'Medium',
+      logToday('Vocabulary', 10, 10), { today: FIXED_TODAY });
     expect(result).toBe(0.8);
+  });
+
+  // ─── Time-decay-specific behavior (LocII Tier 1.1) ──────────────
+
+  it('weights recent buckets more than ancient ones (recovery)', () => {
+    // 28-day-old buckets (weight ≈ 0.25) say 0/10. Today's bucket says 10/10.
+    // Recent perfect performance should now dominate → no struggle signal.
+    const accuracyLog: CategoryAccuracyLog = {
+      Idioms: {
+        '2026-04-29': { correct: 0, total: 10 }, // 28 days ago
+        [todayKey]: { correct: 10, total: 10 },
+      },
+    };
+    const result = calculateAdaptiveMultiplier('Idioms', 'Medium', accuracyLog,
+      { today: FIXED_TODAY, halfLifeDays: 14 });
+    // Weighted: 0.25 * (0 correct, 10 total) + 1.0 * (10, 10) ≈ rate (10 + 1)/(12.5 + 2) ≈ 0.76 → 1.0
+    expect(result).toBe(1.0);
+  });
+
+  it('weights recent failures more (regression detection)', () => {
+    // Ancient great history shouldn't mask a sudden recent collapse.
+    const accuracyLog: CategoryAccuracyLog = {
+      Idioms: {
+        '2026-04-29': { correct: 10, total: 10 }, // 28 days ago, weight 0.25
+        [todayKey]: { correct: 0, total: 10 },     // today, full weight
+      },
+    };
+    const result = calculateAdaptiveMultiplier('Idioms', 'Medium', accuracyLog,
+      { today: FIXED_TODAY, halfLifeDays: 14 });
+    // Weighted (0 + 0.25*10 + 1)/(10 + 0.25*10 + 2) ≈ 3.5/14.5 ≈ 0.24 → 0.8
+    expect(result).toBe(0.8);
+  });
+
+  it('treats a single dated bucket the same as the legacy aggregate would', () => {
+    // Sanity: when all data is "today", time-weighted result equals
+    // plain Laplace, so backward-compat reasoning still works.
+    const plain = calculateAdaptiveMultiplier('Vocabulary', 'Medium',
+      logToday('Vocabulary', 5, 10), { today: FIXED_TODAY });
+    // 5/10 → smoothed 6/12 = 0.5 → < 0.6 → 0.8
+    expect(plain).toBe(0.8);
   });
 });
 

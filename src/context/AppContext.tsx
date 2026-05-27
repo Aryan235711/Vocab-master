@@ -16,7 +16,9 @@ import {
   computeBestScore,
   updateDailyActivity,
   toDateKey,
+  updateCategoryAccuracyLog,
   type DailyActivityEntry,
+  type CategoryAccuracyLog,
 } from '../utils/analytics';
 
 /**
@@ -30,8 +32,9 @@ export interface UserStats {
   reviewsCompletedToday: number; // Count of mature reviews processed today
   level: number; // Derived dynamically from XP
   bestScores: Record<string, number>; // High scores across minigames
-  categoryStats: Record<string, { correct: number; total: number }>; // Tracks raw accuracy across language constraints (Vocabulary, Idioms, etc.)
+  categoryStats: Record<string, { correct: number; total: number }>; // Cumulative aggregate per category (for ProgressTab visualizations)
   dailyActivity: Record<string, DailyActivityEntry>; // Append-only per-day { reviews, learned } log feeding the heatmap
+  categoryAccuracyLog: CategoryAccuracyLog; // Per-category per-day { correct, total } buckets — LocII consumes this via exponential decay
 }
 
 /** Specific status of a word in the algorithm pipeline */
@@ -87,7 +90,8 @@ const defaultStats: UserStats = {
     'mixedMock': 0
   },
   categoryStats: {},
-  dailyActivity: {}
+  dailyActivity: {},
+  categoryAccuracyLog: {}
 };
 
 const defaultSettings = {
@@ -139,6 +143,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bestScores: { ...defaultStats.bestScores, ...(parsed.bestScores || {}) },
           categoryStats: { ...defaultStats.categoryStats, ...(parsed.categoryStats || {}) },
           dailyActivity: { ...defaultStats.dailyActivity, ...(parsed.dailyActivity || {}) },
+          categoryAccuracyLog: { ...defaultStats.categoryAccuracyLog, ...(parsed.categoryAccuracyLog || {}) },
         };
       } catch (e) {
         console.error('Failed to parse stats from local storage', e);
@@ -241,9 +246,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isCorrect = quality >= 3;
     const today = startOfDay(new Date());
     const todayStr = today.toISOString();
+    const dateKey = toDateKey(today);
 
-    // Fresh category stats — what categoryStats WILL be after this review.
-    // LocII reads from this, so the multiplier reflects the just-recorded answer.
+    // Cumulative aggregate (for ProgressTab visualizations) — kept in sync
+    // alongside the time-bucketed log that LocII actually consumes.
     const catStats = stats.categoryStats[category] || { correct: 0, total: 0 };
     const freshCatStats = {
       ...stats.categoryStats,
@@ -253,7 +259,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     };
 
-    const overallMultiplier = calculateAdaptiveMultiplier(category, word.difficulty, freshCatStats);
+    // LocII Tier 1.1 — fresh per-day bucket; multiplier reads from this.
+    const freshAccuracyLog = updateCategoryAccuracyLog(
+      stats.categoryAccuracyLog, category, dateKey, isCorrect
+    );
+    const overallMultiplier = calculateAdaptiveMultiplier(
+      category, word.difficulty, freshAccuracyLog, { today }
+    );
 
     const currentWordState = userWords[wordId];
     const isNewWord = !currentWordState || currentWordState.status === 'new';
@@ -267,7 +279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isDifferentDay, isNewWord, stats.wordsLearnedToday, stats.reviewsCompletedToday
     );
     const freshDailyActivity = updateDailyActivity(
-      stats.dailyActivity, toDateKey(today), isNewWord
+      stats.dailyActivity, dateKey, isNewWord
     );
 
     setStats(s => ({
@@ -277,6 +289,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastStudyDate: todayStr,
       ...counters,
       dailyActivity: freshDailyActivity,
+      categoryAccuracyLog: freshAccuracyLog,
     }));
 
     setUserWords(prev => ({
