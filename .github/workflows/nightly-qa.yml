@@ -56,14 +56,11 @@ jobs:
 
       - name: Tier 1 - Standard E2E Tests
         run: npm run test:e2e
-        
-      - name: Tier 2 - Autonomous AI Tests
-        # Skip if any prior step failed — no point burning Gemini quota on a known-broken build.
-        # We explicitly enforce 1 worker to prevent hitting the 15 RPM Gemini free-tier rate limit.
-        if: success()
-        run: npx playwright test e2e/ai --workers=1
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      # Tier-2 AI tests live in .github/workflows/weekly-ai-qa.yml so they
+      # don't drain the Gemini 20-RPD quota on a nightly cadence. That
+      # workflow runs Sunday 00:00 UTC, on manual dispatch, and whenever
+      # the Gemini integration files change.
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4

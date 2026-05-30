@@ -1,0 +1,68 @@
+name: Weekly AI QA Tests
+
+# Tier-2 AI tests live here, separately from the daily nightly. Reasoning:
+# - Gemini free tier is 20 RPD. Our autonomous AI tester can make 12+ calls
+#   per spec, and Playwright retries (configured in playwright.config.ts) 3x
+#   the burn. Running every night means a quota exhaustion was virtually
+#   guaranteed within 48 hours.
+# - Gemini integration changes weekly at most. Daily signal isn't worth the
+#   cost of a perma-red nightly badge.
+# - This workflow runs Sunday 00:00 UTC + manual dispatch + on changes to
+#   files that affect the Gemini integration. `--retries=0` caps the worst
+#   case at ~12 Gemini calls per spec, well inside the daily quota.
+
+on:
+  schedule:
+    # Sunday midnight UTC — full weekly check.
+    - cron: '0 0 * * 0'
+
+  workflow_dispatch:
+    # Always available for pre-release manual triggers.
+
+  push:
+    branches:
+      - main
+      - master
+    # Only run when something actually touching the AI integration changes,
+    # so routine commits don't ping Gemini.
+    paths:
+      - 'server.ts'
+      - 'src/services/aiService.ts'
+      - 'e2e/ai/**'
+      - '.github/workflows/weekly-ai-qa.yml'
+
+jobs:
+  ai-tests:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Tier 2 - Autonomous AI Tests
+        # --retries=0 caps quota burn at one pass per spec (~12 Gemini calls).
+        # --workers=1 keeps us under the 15 RPM rate limit too.
+        run: npx playwright test e2e/ai --workers=1 --retries=0
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ai-playwright-report
+          path: playwright-report/
+          retention-days: 14
