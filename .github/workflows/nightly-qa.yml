@@ -57,10 +57,10 @@ jobs:
       - name: Tier 1 - Standard E2E Tests
         run: npm run test:e2e
 
-      # Tier-2 AI tests live in .github/workflows/weekly-ai-qa.yml so they
-      # don't drain the Gemini 20-RPD quota on a nightly cadence. That
-      # workflow runs Sunday 00:00 UTC, on manual dispatch, and whenever
-      # the Gemini integration files change.
+      # No Tier-2 (Gemini-driven) e2e tests in CI. The autonomous AI
+      # tester was deleted in favor of a mocked client-side suite
+      # (src/__tests__/aiService.test.ts) that runs in vitest above.
+      # End-to-end Gemini integration is verified by real users on prod.
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
