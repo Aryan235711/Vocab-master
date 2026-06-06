@@ -10,6 +10,7 @@ import {
   detectSessionFatigue,
   updateCategoryAccuracyLog,
   computeTimeWeightedRate,
+  responseTimeMultiplier,
 } from '../utils/analytics';
 import { startOfDay, subDays } from 'date-fns';
 
@@ -371,5 +372,38 @@ describe('computeTimeWeightedRate', () => {
     // Future bucket should be treated as "today" (weight 1), not amplified.
     // weighted correct = 0, weighted total = 10. Smoothed = 1/12 ≈ 0.083
     expect(rate).toBeCloseTo(1 / 12, 3);
+  });
+});
+
+// ─── responseTimeMultiplier (LocII Tier 2.1) ────────────────────
+
+describe('responseTimeMultiplier', () => {
+  it('returns 1.0 in the confident band (< 3s)', () => {
+    expect(responseTimeMultiplier(0)).toBe(1.0);
+    expect(responseTimeMultiplier(500)).toBe(1.0);
+    expect(responseTimeMultiplier(2999)).toBe(1.0);
+  });
+
+  it('returns 0.9 in the moderate band (3s-8s)', () => {
+    expect(responseTimeMultiplier(3000)).toBe(0.9);
+    expect(responseTimeMultiplier(5500)).toBe(0.9);
+    expect(responseTimeMultiplier(7999)).toBe(0.9);
+  });
+
+  it('returns 0.75 in the hesitant band (>= 8s)', () => {
+    expect(responseTimeMultiplier(8000)).toBe(0.75);
+    expect(responseTimeMultiplier(15000)).toBe(0.75);
+    expect(responseTimeMultiplier(60_000)).toBe(0.75);
+  });
+
+  it('respects custom threshold parameters', () => {
+    expect(responseTimeMultiplier(4500, { confidentMs: 5000, hesitantMs: 12000 })).toBe(1.0);
+    expect(responseTimeMultiplier(8000, { confidentMs: 5000, hesitantMs: 12000 })).toBe(0.9);
+    expect(responseTimeMultiplier(15000, { confidentMs: 5000, hesitantMs: 12000 })).toBe(0.75);
+  });
+
+  it('falls back to neutral 1.0 on negative or NaN input (no amplification)', () => {
+    expect(responseTimeMultiplier(-100)).toBe(1.0);
+    expect(responseTimeMultiplier(NaN)).toBe(1.0);
   });
 });

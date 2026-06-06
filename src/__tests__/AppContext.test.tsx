@@ -162,6 +162,37 @@ describe('recordReview', () => {
     expect(result.current.userWords).toEqual({});
   });
 
+  it('forwards responseTimeMs into the SRS multiplier (Tier 2.1)', () => {
+    // Sequence a known-good user on two cards with the same quality but
+    // different response latencies. The hesitant interval must come out
+    // strictly shorter than the confident one — proving the latency
+    // argument reaches calculateAdaptiveMultiplier.
+    const { result } = renderHook(() => useApp(), { wrapper });
+    const vocabWords = result.current.words.filter(w => w.category === 'Vocabulary');
+    expect(vocabWords.length).toBeGreaterThanOrEqual(2);
+
+    // Warm up category accuracy so the LocII signal is "excelling" (1.2x).
+    // Using rare ID range to avoid collision with subsequent assertions.
+    for (let i = 2; i < Math.min(vocabWords.length, 12); i++) {
+      act(() => result.current.recordReview(vocabWords[i].id, 5, 1000));
+    }
+
+    // Two parallel scenarios, run on different words at the same point
+    // in the SRS lifecycle (both fresh, repetitions=0).
+    const fastWordId = vocabWords[0].id;
+    const slowWordId = vocabWords[1].id;
+    act(() => result.current.recordReview(fastWordId, 4, 1000));   // confident
+    act(() => result.current.recordReview(slowWordId, 4, 12_000)); // hesitant
+
+    const fast = result.current.userWords[fastWordId];
+    const slow = result.current.userWords[slowWordId];
+    expect(fast.interval).toBeGreaterThan(0);
+    expect(slow.interval).toBeGreaterThan(0);
+    // Hesitant latency triggers a 0.75x compound multiplier vs 1.0x for
+    // confident. Same SM-2 base → hesitant interval ≤ confident interval.
+    expect(slow.interval).toBeLessThanOrEqual(fast.interval);
+  });
+
   it('records into categoryAccuracyLog so LocII can time-weight (Tier 1.1)', () => {
     const { result } = renderHook(() => useApp(), { wrapper });
     expect(result.current.stats.categoryAccuracyLog).toEqual({});

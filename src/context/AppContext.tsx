@@ -67,7 +67,10 @@ interface AppContextType {
   };
   updateSettings: (newSettings: Partial<AppContextType['settings']>) => void;
   updateBestScore: (mode: string, score: number) => void;
-  recordReview: (wordId: string, quality: number) => void;
+  /** Records a flashcard review. `responseTimeMs` (LocII Tier 2.1) is the
+   *  time from card-shown to rating-tapped; omit it for non-flashcard
+   *  callers (e.g. game modes) and the response-time factor neutralises. */
+  recordReview: (wordId: string, quality: number, responseTimeMs?: number) => void;
   getDueCards: () => WordData[];
   getNewCards: (limit: number) => WordData[];
   gainXp: (amount: number) => void;
@@ -237,8 +240,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    * @param wordId Identifier for the word logic chunk.
    * @param quality Quality scalar measuring discrete cognitive feedback loops derived explicitly from user UX (0-5, Hard to Easy)
    */
-  const recordReview = (wordId: string, quality: number) => {
+  const recordReview = (wordId: string, quality: number, responseTimeMs?: number) => {
     // quality: 0 (Again), 3 (Hard), 4 (Good), 5 (Easy)
+    // responseTimeMs: optional latency signal — Tier 2.1 LocII modifier
     const word = words.find(w => w.id === wordId);
     if (!word) return;
 
@@ -264,7 +268,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       stats.categoryAccuracyLog, category, dateKey, isCorrect
     );
     const overallMultiplier = calculateAdaptiveMultiplier(
-      category, word.difficulty, freshAccuracyLog, { today }
+      category, word.difficulty, freshAccuracyLog,
+      { today, responseTimeMs }
     );
 
     const currentWordState = userWords[wordId];

@@ -1,28 +1,42 @@
 import { UserWord } from '../context/AppContext';
 import { WordData } from '../data/words';
 import { addDays } from 'date-fns';
-import { computeTimeWeightedRate, type CategoryAccuracyLog } from './analytics';
+import {
+  computeTimeWeightedRate,
+  responseTimeMultiplier,
+  type CategoryAccuracyLog,
+} from './analytics';
 
 /**
  * Calculates adaptive modifiers based on user performance in specific word
- * categories and the inherent difficulty of the word itself.
+ * categories, the inherent difficulty of the word, and the user's response
+ * latency on the most recent answer.
  *
- * LocII Tier 1.1: the category rate is now computed via exponential decay
- * over per-day buckets (recent reviews count more). A 14-day half-life
- * means a mistake from 2 weeks ago is half as load-bearing as one today.
+ * LocII Tier 1.1: the category rate is computed via exponential decay over
+ * per-day buckets (14-day half-life — recent reviews count more).
+ * LocII Tier 2.1: an optional response-time signal compounds with the
+ * category + difficulty factors. A slow correct answer is still a weaker
+ * signal than an instant correct one.
  *
  * @param category   Category of the word (e.g., 'Vocabulary', 'Idioms')
  * @param difficulty Inherent difficulty label
  * @param accuracyLog Per-category per-day buckets ({ category: { dateKey: {correct, total} } })
  * @param options.today reference date for decay (default: now)
  * @param options.halfLifeDays days until a bucket's weight halves (default 14)
+ * @param options.responseTimeMs time from card-shown to rating-tapped, in ms.
+ *        Omit to neutralise the response-time factor (default behaviour for
+ *        callers that don't measure latency, e.g. game-mode reviews).
  * @returns Multiplier to inject into the SM-2 interval calculation
  */
 export function calculateAdaptiveMultiplier(
   category: string,
   difficulty: string,
   accuracyLog: CategoryAccuracyLog,
-  options: { today?: Date; halfLifeDays?: number } = {}
+  options: {
+    today?: Date;
+    halfLifeDays?: number;
+    responseTimeMs?: number;
+  } = {}
 ): number {
   const today = options.today ?? new Date();
   const halfLifeDays = options.halfLifeDays ?? 14;
@@ -48,7 +62,14 @@ export function calculateAdaptiveMultiplier(
   if (difficulty === 'Hard') difficultyMultiplier = 0.85;
   else if (difficulty === 'Easy') difficultyMultiplier = 1.15;
 
-  return lociiMultiplier * difficultyMultiplier;
+  // Response-time modifier — only applied when the caller measured it.
+  // Game-mode reviews etc. omit the signal and get a neutral 1.0x.
+  const responseMultiplier =
+    typeof options.responseTimeMs === 'number'
+      ? responseTimeMultiplier(options.responseTimeMs)
+      : 1.0;
+
+  return lociiMultiplier * difficultyMultiplier * responseMultiplier;
 }
 
 /**

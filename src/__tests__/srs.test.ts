@@ -134,6 +134,46 @@ describe('calculateAdaptiveMultiplier', () => {
     // 5/10 → smoothed 6/12 = 0.5 → < 0.6 → 0.8
     expect(plain).toBe(0.8);
   });
+
+  // ─── Response-time integration (LocII Tier 2.1) ─────────────────
+
+  it('omitting responseTimeMs keeps the legacy behavior (neutral 1.0 factor)', () => {
+    const noLatency = calculateAdaptiveMultiplier('Vocabulary', 'Medium',
+      logToday('Vocabulary', 7, 10), { today: FIXED_TODAY });
+    const explicitNeutral = calculateAdaptiveMultiplier('Vocabulary', 'Medium',
+      logToday('Vocabulary', 7, 10), { today: FIXED_TODAY, responseTimeMs: 1000 });
+    expect(noLatency).toBe(1.0);
+    expect(explicitNeutral).toBe(1.0); // 1.0 * 1.0 * 1.0
+  });
+
+  it('moderate response time (3–8s) shrinks the multiplier by 0.9x', () => {
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium',
+      logToday('Vocabulary', 7, 10), { today: FIXED_TODAY, responseTimeMs: 5000 });
+    // 1.0 * 1.0 * 0.9 = 0.9
+    expect(result).toBeCloseTo(0.9);
+  });
+
+  it('hesitant response time (>= 8s) shrinks the multiplier by 0.75x', () => {
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Medium',
+      logToday('Vocabulary', 7, 10), { today: FIXED_TODAY, responseTimeMs: 12000 });
+    expect(result).toBeCloseTo(0.75);
+  });
+
+  it('compounds with category struggle + difficulty', () => {
+    // Struggling (0.8) × Hard (0.85) × hesitant (0.75) ≈ 0.51
+    const result = calculateAdaptiveMultiplier('Idioms', 'Hard',
+      logToday('Idioms', 2, 10),
+      { today: FIXED_TODAY, responseTimeMs: 12000 });
+    expect(result).toBeCloseTo(0.8 * 0.85 * 0.75);
+  });
+
+  it('compounds favourably with excellence + ease + confidence', () => {
+    // Excelling (1.2) × Easy (1.15) × confident (1.0) = 1.38
+    const result = calculateAdaptiveMultiplier('Vocabulary', 'Easy',
+      logToday('Vocabulary', 19, 20),
+      { today: FIXED_TODAY, responseTimeMs: 1000 });
+    expect(result).toBeCloseTo(1.2 * 1.15 * 1.0);
+  });
 });
 
 // ─── calculateNextReviewState ────────────────────────────────────

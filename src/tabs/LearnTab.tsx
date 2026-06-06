@@ -3,7 +3,7 @@
  * @description Core flashcard learning interface implementing the visual SRS sequence and generative AI tools (hooks, chat, and contexts).
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { WordData, getExamFrequency, frequencyLabel } from '../data/words';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -54,6 +54,13 @@ export default function LearnTab() {
   const [fatigueDismissed, setFatigueDismissed] = useState(false);
   const fatigueSignal = detectSessionFatigue(qualityHistory);
 
+  // LocII Tier 2.1 — response time as quality signal. Capture the moment
+  // a card is first shown; subtract from Date.now() at rating time to get
+  // the total response latency in ms. The latency is forwarded to
+  // recordReview, where it compounds with the category + difficulty
+  // factors inside calculateAdaptiveMultiplier.
+  const cardShownAtRef = useRef<number>(Date.now());
+
   /** Build initial learning sequence fetching explicitly due cards bounded by hard constraint thresholds. */
   useEffect(() => {
     // initialize session
@@ -74,6 +81,8 @@ export default function LearnTab() {
     setChatQ('');
     setChatSession(null);
     setAiChatOpen(false);
+    // Reset the response-time clock on every card transition.
+    cardShownAtRef.current = Date.now();
   }, [currentIndex, currentCard]);
 
   /** Triggers browser-native OS TTS parsing constrained explicitly to generic en-IN metrics for accuracy. */
@@ -103,7 +112,8 @@ export default function LearnTab() {
       // Just record they struggled, we could pre-fetch it here
     }
 
-    recordReview(currentCard.id, quality);
+    const responseTimeMs = Date.now() - cardShownAtRef.current;
+    recordReview(currentCard.id, quality, responseTimeMs);
     setQualityHistory(h => [...h, quality]);
     if (settings.soundEffects) {
       quality >= 3 ? playCorrect() : playIncorrect();

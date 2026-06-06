@@ -217,6 +217,38 @@ export function computeTimeWeightedRate(
   return (weightedCorrect + 1) / (weightedTotal + 2);
 }
 
+// ─── Response Time Modifier (LocII Tier 2.1) ─────────────────────
+
+/**
+ * Maps total time-to-answer (card shown → rating tapped) to a multiplier
+ * on the SRS interval. The intuition: a correct answer after 12 seconds
+ * of staring at the card is less load-bearing than an instant recall —
+ * the engine should schedule it sooner.
+ *
+ * Default thresholds (from LOCII_ROADMAP.md §2.1):
+ *   < 3000ms  → 1.00x  (confident)
+ *   3-8000ms  → 0.90x  (moderate)
+ *   > 8000ms  → 0.75x  (hesitant)
+ *
+ * Pure: no state, no side effects.
+ *
+ * @param responseTimeMs total ms from card shown to rating tapped
+ * @param options.confidentMs upper bound of "confident" band (default 3000)
+ * @param options.hesitantMs  upper bound of "moderate"  band (default 8000)
+ */
+export function responseTimeMultiplier(
+  responseTimeMs: number,
+  options: { confidentMs?: number; hesitantMs?: number } = {}
+): number {
+  const confident = options.confidentMs ?? 3000;
+  const hesitant = options.hesitantMs ?? 8000;
+  // Negative times (clock skew, NaN) → fall back to neutral. Never amplify.
+  if (!(responseTimeMs >= 0)) return 1.0;
+  if (responseTimeMs < confident) return 1.0;
+  if (responseTimeMs < hesitant) return 0.9;
+  return 0.75;
+}
+
 // ─── Session Fatigue Detection (LocII Tier 1.2) ──────────────────
 
 export interface SessionFatigueSignal {
