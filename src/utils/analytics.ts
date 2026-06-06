@@ -217,6 +217,43 @@ export function computeTimeWeightedRate(
   return (weightedCorrect + 1) / (weightedTotal + 2);
 }
 
+// ─── Observed Difficulty (LocII Tier 2.3) ────────────────────────
+
+export type DifficultyLabel = 'Easy' | 'Medium' | 'Hard';
+
+/**
+ * Maps the user's observed average-quality score on a single word to a
+ * difficulty label, returning `null` when the sample size is too small
+ * to be reliable.
+ *
+ * Static dictionary labels are a population prior. After enough personal
+ * reviews, this user's actual experience should dominate — a word that's
+ * labelled "Medium" but the user always nails in 1 second is effectively
+ * Easy FOR THEM, and LocII should schedule it accordingly.
+ *
+ * Default thresholds (from LOCII_ROADMAP.md §2.3):
+ *   avg >= 4.0   → 'Easy'    (mostly 4s and 5s)
+ *   3.0 <= avg   → 'Medium'  (correct but with friction)
+ *   avg < 3.0    → 'Hard'    (frequent lapses)
+ *
+ * @param qualitySum   sum of quality scores across all reviews of the word
+ * @param qualityCount how many reviews contributed to qualitySum
+ * @param minReviews   minimum sample size before overriding the prior (default 5)
+ * @returns the calibrated label, or null if insufficient data
+ */
+export function observedDifficulty(
+  qualitySum: number,
+  qualityCount: number,
+  minReviews: number = 5
+): DifficultyLabel | null {
+  if (qualityCount < minReviews) return null;
+  if (qualityCount <= 0) return null;
+  const avg = qualitySum / qualityCount;
+  if (avg >= 4.0) return 'Easy';
+  if (avg >= 3.0) return 'Medium';
+  return 'Hard';
+}
+
 // ─── Response Time Modifier (LocII Tier 2.1) ─────────────────────
 
 /**

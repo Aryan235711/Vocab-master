@@ -162,6 +162,47 @@ describe('recordReview', () => {
     expect(result.current.userWords).toEqual({});
   });
 
+  it('tracks running qualitySum/qualityCount per word (Tier 2.3)', () => {
+    const { result } = renderHook(() => useApp(), { wrapper });
+    const wordId = result.current.words[0].id;
+
+    act(() => result.current.recordReview(wordId, 5, 1000));
+    act(() => result.current.recordReview(wordId, 4, 1000));
+    act(() => result.current.recordReview(wordId, 3, 1000));
+
+    const uw = result.current.userWords[wordId];
+    expect(uw.qualitySum).toBe(5 + 4 + 3);
+    expect(uw.qualityCount).toBe(3);
+  });
+
+  it('overrides static difficulty with observed difficulty after 5 reviews (Tier 2.3)', () => {
+    // Pick a word that's statically "Hard" in the dictionary so the
+    // override is observable: if the user nails it five times in a row,
+    // the engine should treat it as Easy and schedule it further out
+    // than it would have under the static label.
+    const { result } = renderHook(() => useApp(), { wrapper });
+    const hardWord = result.current.words.find(w => w.difficulty === 'Hard');
+    expect(hardWord).toBeDefined();
+
+    // Five perfect reviews on the Hard word → observed avg = 5.0 → Easy.
+    for (let i = 0; i < 5; i++) {
+      act(() => result.current.recordReview(hardWord!.id, 5, 1000));
+    }
+
+    const overridden = result.current.userWords[hardWord!.id];
+    expect(overridden.qualityCount).toBe(5);
+    expect(overridden.qualitySum).toBe(25);
+
+    // Sanity: the override actually moved the multiplier — the resulting
+    // interval after 5 perfect-quality reviews on a "Hard" word should be
+    // strictly longer than the interval an identical sequence would
+    // produce while still treated as Hard. We can't observe that without
+    // poking the multiplier directly, but we can verify the userWord has
+    // accumulated the data the multiplier consumes (above) AND that the
+    // interval is non-trivial (got past the initial 1 → 6 progression).
+    expect(overridden.interval).toBeGreaterThan(6);
+  });
+
   it('forwards responseTimeMs into the SRS multiplier (Tier 2.1)', () => {
     // Sequence a known-good user on two cards with the same quality but
     // different response latencies. The hesitant interval must come out

@@ -17,6 +17,7 @@ import {
   updateDailyActivity,
   toDateKey,
   updateCategoryAccuracyLog,
+  observedDifficulty,
   type DailyActivityEntry,
   type CategoryAccuracyLog,
 } from '../utils/analytics';
@@ -50,6 +51,11 @@ export interface UserWord {
   repetitions: number; // Successful, contiguous recall events.
   nextReviewDate: string; // ISO string representing when this word is next due.
   status: WordStatus; // Broad category location in the user's brain.
+  // LocII Tier 2.3 — running quality stats per word. Optional so existing
+  // localStorage payloads from before Tier 2.3 hydrate cleanly; new writes
+  // always include them. `observedDifficulty(...)` consumes these.
+  qualitySum?: number;   // sum of quality scores across all reviews of this word
+  qualityCount?: number; // count of reviews contributing to qualitySum
 }
 
 interface AppContextType {
@@ -267,13 +273,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const freshAccuracyLog = updateCategoryAccuracyLog(
       stats.categoryAccuracyLog, category, dateKey, isCorrect
     );
-    const overallMultiplier = calculateAdaptiveMultiplier(
-      category, word.difficulty, freshAccuracyLog,
-      { today, responseTimeMs }
-    );
 
     const currentWordState = userWords[wordId];
     const isNewWord = !currentWordState || currentWordState.status === 'new';
+
+    // LocII Tier 2.3 — observed difficulty calibration.
+    // Maintain running per-word quality stats and, once the sample is
+    // large enough, override the static dictionary label with the
+    // user-personal observation. Static label is the fallback prior.
+    const freshQualitySum = (currentWordState?.qualitySum ?? 0) + quality;
+    const freshQualityCount = (currentWordState?.qualityCount ?? 0) + 1;
+    const calibratedDifficulty =
+      observedDifficulty(freshQualitySum, freshQualityCount) ?? word.difficulty;
+
+    const overallMultiplier = calculateAdaptiveMultiplier(
+      category, calibratedDifficulty, freshAccuracyLog,
+      { today, responseTimeMs }
+    );
+
     const nextState = calculateNextReviewState(word, currentWordState, quality, overallMultiplier);
 
     const isDifferentDay = stats.lastStudyDate !== todayStr;
@@ -299,7 +316,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setUserWords(prev => ({
       ...prev,
-      [wordId]: { id: wordId, ...nextState },
+      [wordId]: {
+        id: wordId,
+        ...nextState,
+        qualitySum: freshQualitySum,
+        qualityCount: freshQualityCount,
+      },
     }));
   };
 

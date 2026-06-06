@@ -11,6 +11,7 @@ import {
   updateCategoryAccuracyLog,
   computeTimeWeightedRate,
   responseTimeMultiplier,
+  observedDifficulty,
 } from '../utils/analytics';
 import { startOfDay, subDays } from 'date-fns';
 
@@ -405,5 +406,48 @@ describe('responseTimeMultiplier', () => {
   it('falls back to neutral 1.0 on negative or NaN input (no amplification)', () => {
     expect(responseTimeMultiplier(-100)).toBe(1.0);
     expect(responseTimeMultiplier(NaN)).toBe(1.0);
+  });
+});
+
+// ─── observedDifficulty (LocII Tier 2.3) ────────────────────────
+
+describe('observedDifficulty', () => {
+  it('returns null below the minimum sample size', () => {
+    // 4 reviews, all perfect 5s — still too few to override.
+    expect(observedDifficulty(20, 4)).toBeNull();
+    // Edge: 0 reviews.
+    expect(observedDifficulty(0, 0)).toBeNull();
+  });
+
+  it('returns Easy when average quality is >= 4.0 (mostly 4s and 5s)', () => {
+    expect(observedDifficulty(25, 5)).toBe('Easy');   // 5.0
+    expect(observedDifficulty(20, 5)).toBe('Easy');   // 4.0
+    expect(observedDifficulty(45, 10)).toBe('Easy');  // 4.5
+  });
+
+  it('returns Medium when average is in [3.0, 4.0)', () => {
+    expect(observedDifficulty(15, 5)).toBe('Medium'); // 3.0
+    expect(observedDifficulty(18, 5)).toBe('Medium'); // 3.6
+    expect(observedDifficulty(19.9, 5)).toBe('Medium'); // 3.98
+  });
+
+  it('returns Hard when average is < 3.0 (frequent lapses)', () => {
+    expect(observedDifficulty(14, 5)).toBe('Hard'); // 2.8
+    expect(observedDifficulty(0, 5)).toBe('Hard');  // 0.0 — total blackouts
+    expect(observedDifficulty(10, 5)).toBe('Hard'); // 2.0
+  });
+
+  it('respects a custom minReviews threshold', () => {
+    // Lower the bar to 3 reviews — sum=10 / 3 ≈ 3.33 → Medium.
+    expect(observedDifficulty(10, 3, 3)).toBe('Medium');
+    // Raise the bar to 10 — even 5 perfect reviews don't qualify.
+    expect(observedDifficulty(25, 5, 10)).toBeNull();
+  });
+
+  it('treats the 4.0 and 3.0 boundaries as inclusive lower bounds', () => {
+    // Exactly 4.0 → Easy (>= 4.0)
+    expect(observedDifficulty(20, 5)).toBe('Easy');
+    // Exactly 3.0 → Medium (>= 3.0)
+    expect(observedDifficulty(15, 5)).toBe('Medium');
   });
 });
