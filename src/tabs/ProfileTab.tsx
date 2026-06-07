@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { Code, Heart, Crown, Cloud, Star, Download, Upload } from 'lucide-react';
 import AiUsageIndicator from '../components/AiUsageIndicator';
 import UpgradeModal from '../components/UpgradeModal';
+import { EXAM_OPTIONS } from '../data/words';
 
 export default function ProfileTab() {
   const { settings, updateSettings, resetProgress, exportData, importData } = useApp();
@@ -131,11 +132,9 @@ export default function ProfileTab() {
             onChange={e => updateSettings({ examTarget: e.target.value })}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-medium outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer"
           >
-            <option>SSC CGL</option>
-            <option>SSC CHSL</option>
-            <option>UPSC CSAT</option>
-            <option>IBPS PO</option>
-            <option>SBI Clerk</option>
+            {EXAM_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
           </select>
         </div>
 

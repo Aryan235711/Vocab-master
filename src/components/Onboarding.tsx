@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { EXAM_OPTIONS } from '../data/words';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Target, BookOpen, User, ArrowRight, Zap, CheckCircle2 } from 'lucide-react';
 
@@ -61,7 +62,7 @@ export default function Onboarding() {
       </div>
       
       <div className="grid grid-cols-1 gap-3 mb-8 flex-1 content-center">
-        {['SSC CGL', 'SSC CHSL', 'UPSC CSAT', 'Banking / IBPS'].map(e => (
+        {EXAM_OPTIONS.map(e => (
           <button
             key={e}
             onClick={() => setExam(e)}

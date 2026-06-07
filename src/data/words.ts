@@ -32,9 +32,25 @@ export const EXAM_KEY_MAP: Record<string, string> = {
   'SBI Clerk': 'IBPS_PO', // SBI Clerk shares banking vocabulary pool
 };
 
-/** Get the numeric frequency score for a word given the user's exam target. */
+/** Single source of truth for the exam picker. Onboarding + ProfileTab
+ *  both consume this so the two screens can never drift out of sync, and
+ *  a unit test pins that every entry is a key in EXAM_KEY_MAP — so any
+ *  new option that's added without a matching key fails CI immediately. */
+export const EXAM_OPTIONS: readonly string[] = Object.keys(EXAM_KEY_MAP);
+
+/** Get the numeric frequency score for a word given the user's exam target.
+ *  Falls back to SSC_CGL prioritisation when the target is unknown, and
+ *  emits a console warning so the drift is visible in dev (the prevention
+ *  layer is the EXAM_OPTIONS / EXAM_KEY_MAP test). */
 export function getExamFrequency(word: WordData, examTarget: string): number {
-  const key = EXAM_KEY_MAP[examTarget] || 'SSC_CGL';
+  let key = EXAM_KEY_MAP[examTarget];
+  if (!key) {
+    console.warn(
+      `[getExamFrequency] Unknown examTarget "${examTarget}" — falling back to SSC_CGL prioritisation. ` +
+      `Check EXAM_KEY_MAP and EXAM_OPTIONS in src/data/words.ts.`
+    );
+    key = 'SSC_CGL';
+  }
   return word.examFrequency[key] ?? 0;
 }
 
