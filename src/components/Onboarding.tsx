@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { EXAM_OPTIONS } from '../data/words';
+import { track } from '../services/analyticsService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Target, BookOpen, User, ArrowRight, Zap, CheckCircle2 } from 'lucide-react';
 
@@ -19,6 +20,8 @@ export default function Onboarding() {
       dailyGoal: goal,
       hasCompletedOnboarding: true
     });
+    // Telemetry: no name/userName sent — only the two design choices.
+    track('onboarding_completed', { daily_goal: goal, exam_target: exam });
   };
 
   const steps = [

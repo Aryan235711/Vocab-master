@@ -169,6 +169,8 @@ VocabDost deploys as a single Express service on [Render](https://render.com) �
 
 > **Note: Firebase is optional.** The app runs fully without Firebase env vars — it falls back to local-only mode (waitlist saves to localStorage, soft launch defaults to ON). Set up Firebase later when you're ready for cloud waitlist + cross-device sync.
 
+> **Note: PostHog telemetry is optional and consent-gated.** Set `VITE_POSTHOG_KEY` (and optionally `VITE_POSTHOG_HOST`) in Render → Environment to enable anonymous, aggregate event capture. Without the key the analytics layer no-ops cleanly. With the key, *nothing* flows until the user explicitly accepts the consent banner shown on first launch. See [/privacy](src/tabs/PrivacyPolicy.tsx) for the exact event list and what's never collected.
+
 ### Prerequisites
 
 - A [Render](https://render.com) account (free tier works)

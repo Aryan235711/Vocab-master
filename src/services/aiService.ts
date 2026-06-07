@@ -4,6 +4,8 @@
  * Acquires a session token on first use, sends it with every request.
  */
 
+import { track } from './analyticsService';
+
 const API_BASE = '/api';
 
 // ─── Session Token Management ────────────────────────────────────
@@ -88,7 +90,9 @@ async function post(endpoint: string, body: Record<string, unknown>): Promise<st
 export const generateMnemonic = async (word: string, meaning: string): Promise<string> => {
   try {
     checkOffline();
-    return await post('/mnemonic', { word, meaning });
+    const result = await post('/mnemonic', { word, meaning });
+    track('ai_call_used', { endpoint: 'mnemonic' });
+    return result;
   } catch (error) {
     if (error instanceof Error && error.message === 'OFFLINE') return 'Offline mode active.';
     console.error('AI Service Error:', error);
@@ -99,7 +103,9 @@ export const generateMnemonic = async (word: string, meaning: string): Promise<s
 export const explainInContext = async (word: string, examTarget: string): Promise<string> => {
   try {
     checkOffline();
-    return await post('/explain', { word, examTarget });
+    const result = await post('/explain', { word, examTarget });
+    track('ai_call_used', { endpoint: 'explain' });
+    return result;
   } catch (error) {
     if (error instanceof Error && error.message === 'OFFLINE') return 'Offline mode active.';
     console.error('AI Service Error:', error);
@@ -116,6 +122,7 @@ export const createDoubtChat = (word: string) => {
       history.push({ role: 'user', parts: [{ text: message }] });
       const text = await post('/chat', { word, message, history });
       history.push({ role: 'model', parts: [{ text }] });
+      track('ai_call_used', { endpoint: 'chat' });
       return { text };
     },
   };

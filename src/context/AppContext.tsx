@@ -21,6 +21,7 @@ import {
   type DailyActivityEntry,
   type CategoryAccuracyLog,
 } from '../utils/analytics';
+import { track } from '../services/analyticsService';
 
 /**
  * Aggregates all user performance, metrics, and application engagement data.
@@ -323,6 +324,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         qualityCount: freshQualityCount,
       },
     }));
+
+    // Telemetry: no word.id or word.word sent — only the design
+    // signals we'd need to evaluate LocII performance in aggregate.
+    track('review_recorded', {
+      quality,
+      category,
+      difficulty: word.difficulty,
+      response_time_ms: responseTimeMs,
+      is_new_word: isNewWord,
+    });
   };
 
   /** Fetches all words scheduled in user flow explicitly before or intersecting identical temporal frames. */

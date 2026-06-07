@@ -6,12 +6,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { PremiumProvider } from './context/PremiumContext';
 import { PWAProvider } from './components/PWAProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import ConsentBanner from './components/ConsentBanner';
+import { initAnalytics, track } from './services/analyticsService';
 import { Flame, Coins, User, Home, BookOpen, Target, TrendingUp, Settings } from 'lucide-react';
 
 // View Tabs
@@ -21,6 +23,7 @@ import PracticeTab from './tabs/PracticeTab';
 import ProgressTab from './tabs/ProgressTab';
 import ProfileTab from './tabs/ProfileTab';
 import PricingTab from './tabs/PricingTab';
+import PrivacyPolicy from './tabs/PrivacyPolicy';
 
 import Onboarding from './components/Onboarding';
 
@@ -125,9 +128,19 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 const AppContent = () => {
   const { settings } = useApp();
 
-  // Guard routing; force user through initialization process if incomplete
+  // Guard routing; force user through initialization process if incomplete.
+  // The /privacy route is reachable from the consent banner inside Onboarding
+  // too, so we wrap onboarding in a Router as well.
   if (!settings.hasCompletedOnboarding) {
-    return <Onboarding />;
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="*" element={<Onboarding />} />
+        </Routes>
+        <ConsentBanner />
+      </BrowserRouter>
+    );
   }
 
   return (
@@ -141,8 +154,10 @@ const AppContent = () => {
           <Route path="/progress" element={<ProgressTab />} />
           <Route path="/profile" element={<ProfileTab />} />
           <Route path="/pricing" element={<PricingTab />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
         </Routes>
       </Layout>
+      <ConsentBanner />
     </BrowserRouter>
   );
 };
@@ -152,6 +167,11 @@ const AppContent = () => {
  * Wraps the app in the global context provider.
  */
 export default function App() {
+  useEffect(() => {
+    initAnalytics();
+    track('app_opened');
+  }, []);
+
   return (
     <ErrorBoundary>
       <AppProvider>

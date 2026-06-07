@@ -13,6 +13,7 @@ import AiUsageIndicator from '../components/AiUsageIndicator';
 import UpgradeModal from '../components/UpgradeModal';
 import { playCorrect, playIncorrect, playFlip } from '../utils/sound';
 import { detectSessionFatigue } from '../utils/analytics';
+import { track } from '../services/analyticsService';
 import { Volume2, ChevronRight, MessageCircle, AlertCircle, RefreshCw, X, Frown, Meh, Smile, SmilePlus, BookOpen, PartyPopper, Umbrella, Sparkles, Coffee } from 'lucide-react';
 import canvasConfetti from 'canvas-confetti';
 
@@ -60,6 +61,9 @@ export default function LearnTab() {
   // recordReview, where it compounds with the category + difficulty
   // factors inside calculateAdaptiveMultiplier.
   const cardShownAtRef = useRef<number>(Date.now());
+  // Wall-clock start of the current learning session, used to emit
+  // `session_completed` with an accurate duration.
+  const sessionStartedAtRef = useRef<number>(Date.now());
 
   /** Build initial learning sequence fetching explicitly due cards bounded by hard constraint thresholds. */
   useEffect(() => {
@@ -68,6 +72,8 @@ export default function LearnTab() {
     const newCards = getNewCards(10); // Throttle incoming new words mathematically
     const sessionQueue = [...due, ...newCards].slice(0, 40); // Hard cap: max 40 reviews per session
     setQueue(sessionQueue);
+    sessionStartedAtRef.current = Date.now();
+    track('session_started');
   }, []);
 
   const currentCard = queue[currentIndex];
@@ -132,6 +138,12 @@ export default function LearnTab() {
         colors: ['#4F46E5', '#FBBF24', '#10B981']
       });
       gainXp(50); // Bonus for finishing session
+      track('session_completed', {
+        duration_ms: Date.now() - sessionStartedAtRef.current,
+        cards_reviewed: queue.length,
+        fatigue_triggered: fatigueSignal.fatigued,
+        fatigue_dismissed: fatigueDismissed,
+      });
     }
   };
 
@@ -207,6 +219,8 @@ export default function LearnTab() {
             setSessionCompleted(false);
             setQualityHistory([]);
             setFatigueDismissed(false);
+            sessionStartedAtRef.current = Date.now();
+            track('session_started');
           }}
           className="bg-[#4F46E5] text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl shadow-indigo-200 hover:scale-[1.02] active:scale-95 transition-transform"
         >
@@ -251,7 +265,15 @@ export default function LearnTab() {
             </p>
             <div className="flex gap-2 mt-3">
               <button
-                onClick={() => setSessionCompleted(true)}
+                onClick={() => {
+                  track('session_completed', {
+                    duration_ms: Date.now() - sessionStartedAtRef.current,
+                    cards_reviewed: qualityHistory.length,
+                    fatigue_triggered: true,
+                    fatigue_dismissed: false,
+                  });
+                  setSessionCompleted(true);
+                }}
                 className="bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors"
               >
                 End session
